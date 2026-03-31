@@ -10,7 +10,7 @@ import (
 )
 
 // RunTask executes a single benchmark task against a connected Gateway.
-func RunTask(ctx context.Context, client *GatewayClient, task Task, workspacePath string) RunResult {
+func RunTask(ctx context.Context, client Backend, task Task, workspacePath string) RunResult {
 	runID := generateRunID()
 	start := time.Now()
 
@@ -76,7 +76,7 @@ func RunTask(ctx context.Context, client *GatewayClient, task Task, workspacePat
 
 // RunAll executes all tasks, optionally repeating each N times.
 // Returns all individual run results.
-func RunAll(ctx context.Context, client *GatewayClient, tasks []Task, repeatCount int, workspacePath string) []RunResult {
+func RunAll(ctx context.Context, client Backend, tasks []Task, repeatCount int, workspacePath string) []RunResult {
 	if repeatCount < 1 {
 		repeatCount = 1
 	}

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const version = "0.1.2"
+const version = "0.2.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -44,8 +44,11 @@ Usage:
   clawbench version            Print version
 
 Run flags:
-  --gateway URL     Gateway WebSocket URL (default: ws://127.0.0.1:18789)
-  --token TOKEN     Auth token (or set OPENCLAW_AUTH_TOKEN env var)
+  --mode MODE       Backend mode: "cli" (default) or "websocket"
+                    cli: uses openclaw CLI (handles auth automatically)
+                    websocket: connects directly to Gateway WebSocket
+  --gateway URL     Gateway WebSocket URL (default: ws://127.0.0.1:18789, websocket mode only)
+  --token TOKEN     Auth token (websocket mode only, or set OPENCLAW_AUTH_TOKEN)
   --label NAME      Label for this benchmark run (default: timestamp)
   --task ID         Run a specific task only (default: all)
   --repeat N        Repeat each task N times (default: 1)
@@ -61,6 +64,7 @@ Examples:
 
 func cmdRun(args []string) {
 	// Parse flags
+	mode := "cli" // default to CLI backend
 	gatewayURL := "ws://127.0.0.1:18789"
 	authToken := os.Getenv("OPENCLAW_AUTH_TOKEN")
 	label := time.Now().Format("20060102-150405")
@@ -71,6 +75,11 @@ func cmdRun(args []string) {
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--mode":
+			i++
+			if i < len(args) {
+				mode = args[i]
+			}
 		case "--gateway":
 			i++
 			if i < len(args) {
@@ -139,16 +148,26 @@ func cmdRun(args []string) {
 		cancel()
 	}()
 
-	// Connect to Gateway
-	fmt.Printf("Connecting to Gateway at %s...\n", gatewayURL)
-	client := NewGatewayClient(gatewayURL, authToken)
+	// Create backend
+	var client Backend
+	switch mode {
+	case "cli":
+		fmt.Println("Using openclaw CLI backend...")
+		client = NewCLIBackend()
+	case "websocket":
+		fmt.Printf("Connecting to Gateway at %s...\n", gatewayURL)
+		client = NewGatewayClient(gatewayURL, authToken)
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown mode: %s (use 'cli' or 'websocket')\n", mode)
+		os.Exit(1)
+	}
+
 	if err := client.Connect(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
 	defer client.Close()
 
-	// Get Gateway info from connect handshake
 	gwVersion := client.ServerVersion()
 	fmt.Printf("Connected. Gateway version: %s\n", gwVersion)
 	fmt.Printf("Running %d task(s), %d repeat(s) each\n\n", len(tasks), repeatCount)

@@ -1,6 +1,9 @@
 package main
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // Task defines a benchmark task with its prompt and evaluation criteria.
 type Task struct {
@@ -88,6 +91,15 @@ type Summary struct {
 	AvgCorrectness float64 `json:"avg_correctness"`
 	AvgLatency     float64 `json:"avg_latency_seconds"`
 	TotalCost      float64 `json:"total_cost_usd"`
+}
+
+// Backend is the interface for sending prompts to OpenClaw.
+// Implemented by GatewayClient (WebSocket) and CLIBackend (openclaw CLI).
+type Backend interface {
+	Connect(ctx context.Context) error
+	SendPrompt(ctx context.Context, prompt string) (GatewayResponse, error)
+	ServerVersion() string
+	Close() error
 }
 
 // GatewayResponse is what we get back from the OpenClaw Gateway.
