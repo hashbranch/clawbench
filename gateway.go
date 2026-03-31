@@ -95,7 +95,7 @@ func (c *GatewayClient) Connect(ctx context.Context) error {
 	if err != nil {
 		fmt.Printf("Warning: %s (connecting without device identity, scopes may be limited)\n", err)
 	} else {
-		connectParams["device"] = deviceIdentity.SignChallenge(nonce)
+		connectParams["device"] = deviceIdentity.SignChallenge(nonce, c.authToken)
 
 		// Also use device token if available
 		deviceAuth, _ := LoadDeviceAuth()

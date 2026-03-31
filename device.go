@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"strings"
 	"os"
 	"path/filepath"
 	"time"
@@ -20,8 +21,8 @@ type DeviceIdentity struct {
 	PrivateKey ed25519.PrivateKey `json:"-"`
 
 	// Raw fields from the JSON file (PEM-encoded PKCS8)
-	RawPublicKey  string `json:"publicKey"`
-	RawPrivateKey string `json:"privateKey"`
+	RawPublicKey  string `json:"publicKeyPem"`
+	RawPrivateKey string `json:"privateKeyPem"`
 }
 
 // DeviceAuth holds the stored device token
@@ -68,8 +69,11 @@ func LoadDeviceIdentity() (*DeviceIdentity, error) {
 
 // parseEdPrivateKey handles PEM PKCS8 or raw base64 encoded Ed25519 private keys.
 func parseEdPrivateKey(raw string) (ed25519.PrivateKey, error) {
+	// JSON may store PEM with literal \n — normalize to real newlines
+	normalized := strings.ReplaceAll(raw, `\n`, "\n")
+
 	// Try PEM first
-	block, _ := pem.Decode([]byte(raw))
+	block, _ := pem.Decode([]byte(normalized))
 	if block != nil {
 		parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 		if err != nil {
@@ -116,8 +120,11 @@ func parseEdPrivateKey(raw string) (ed25519.PrivateKey, error) {
 
 // parseEdPublicKey handles PEM SPKI or raw base64 encoded Ed25519 public keys.
 func parseEdPublicKey(raw string) (ed25519.PublicKey, error) {
+	// JSON may store PEM with literal \n — normalize to real newlines
+	normalized := strings.ReplaceAll(raw, `\n`, "\n")
+
 	// Try PEM first
-	block, _ := pem.Decode([]byte(raw))
+	block, _ := pem.Decode([]byte(normalized))
 	if block != nil {
 		parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
 		if err != nil {
@@ -180,12 +187,13 @@ func LoadDeviceAuth() (*DeviceAuth, error) {
 }
 
 // SignChallenge signs the connect.challenge nonce using the v3 payload format.
-// Returns the device auth payload for the connect handshake.
-func (d *DeviceIdentity) SignChallenge(nonce string) map[string]any {
+// v3 format: v3|<deviceId>|<clientId>|<clientMode>|<role>|<scopes>|<signedAtMs>|<token>|<nonce>|<platform>|<deviceFamily>
+func (d *DeviceIdentity) SignChallenge(nonce string, authToken string) map[string]any {
 	now := time.Now().UnixMilli()
 
-	// v3 payload: "openclaw-device-auth-v3:<nonce>:<timestamp>"
-	payload := fmt.Sprintf("openclaw-device-auth-v3:%s:%d", nonce, now)
+	scopes := "operator.admin,operator.read,operator.write,operator.approvals,operator.pairing"
+	payload := fmt.Sprintf("v3|%s|cli|cli|operator|%s|%d|%s|%s|cli|desktop",
+		d.DeviceID, scopes, now, authToken, nonce)
 	signature := ed25519.Sign(d.PrivateKey, []byte(payload))
 
 	// Send raw 32-byte public key as base64url (not SPKI)
