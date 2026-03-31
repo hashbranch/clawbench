@@ -2,8 +2,10 @@ package main
 
 import (
 	"crypto/ed25519"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,7 +19,7 @@ type DeviceIdentity struct {
 	PublicKey  ed25519.PublicKey  `json:"-"`
 	PrivateKey ed25519.PrivateKey `json:"-"`
 
-	// Raw fields from the JSON file
+	// Raw fields from the JSON file (PEM-encoded PKCS8)
 	RawPublicKey  string `json:"publicKey"`
 	RawPrivateKey string `json:"privateKey"`
 }
@@ -47,27 +49,114 @@ func LoadDeviceIdentity() (*DeviceIdentity, error) {
 		return nil, fmt.Errorf("failed to parse device identity: %w", err)
 	}
 
-	// Decode the keys from base64
-	pubBytes, err := base64.RawURLEncoding.DecodeString(identity.RawPublicKey)
+	// Parse private key (PEM-encoded PKCS8)
+	privKey, err := parseEdPrivateKey(identity.RawPrivateKey)
 	if err != nil {
-		// Try standard base64
-		pubBytes, err = base64.StdEncoding.DecodeString(identity.RawPublicKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode public key: %w", err)
-		}
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
-	identity.PublicKey = ed25519.PublicKey(pubBytes)
+	identity.PrivateKey = privKey
 
-	privBytes, err := base64.RawURLEncoding.DecodeString(identity.RawPrivateKey)
+	// Parse public key (PEM-encoded SPKI)
+	pubKey, err := parseEdPublicKey(identity.RawPublicKey)
 	if err != nil {
-		privBytes, err = base64.StdEncoding.DecodeString(identity.RawPrivateKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode private key: %w", err)
-		}
+		return nil, fmt.Errorf("failed to parse public key: %w", err)
 	}
-	identity.PrivateKey = ed25519.PrivateKey(privBytes)
+	identity.PublicKey = pubKey
 
 	return &identity, nil
+}
+
+// parseEdPrivateKey handles PEM PKCS8 or raw base64 encoded Ed25519 private keys.
+func parseEdPrivateKey(raw string) (ed25519.PrivateKey, error) {
+	// Try PEM first
+	block, _ := pem.Decode([]byte(raw))
+	if block != nil {
+		parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("PKCS8 parse failed: %w", err)
+		}
+		edKey, ok := parsed.(ed25519.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("key is not Ed25519")
+		}
+		return edKey, nil
+	}
+
+	// Fallback: try raw base64
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		decoded, err = base64.StdEncoding.DecodeString(raw)
+		if err != nil {
+			return nil, fmt.Errorf("not PEM and not valid base64")
+		}
+	}
+
+	switch len(decoded) {
+	case 64:
+		return ed25519.PrivateKey(decoded), nil
+	case 32:
+		return ed25519.NewKeyFromSeed(decoded), nil
+	case 48:
+		// Raw PKCS8 DER without PEM wrapper, seed is last 32 bytes
+		seed := decoded[len(decoded)-32:]
+		return ed25519.NewKeyFromSeed(seed), nil
+	default:
+		// Try parsing as DER
+		parsed, err := x509.ParsePKCS8PrivateKey(decoded)
+		if err != nil {
+			return nil, fmt.Errorf("unexpected key length %d and DER parse failed: %w", len(decoded), err)
+		}
+		edKey, ok := parsed.(ed25519.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("key is not Ed25519")
+		}
+		return edKey, nil
+	}
+}
+
+// parseEdPublicKey handles PEM SPKI or raw base64 encoded Ed25519 public keys.
+func parseEdPublicKey(raw string) (ed25519.PublicKey, error) {
+	// Try PEM first
+	block, _ := pem.Decode([]byte(raw))
+	if block != nil {
+		parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("SPKI parse failed: %w", err)
+		}
+		edKey, ok := parsed.(ed25519.PublicKey)
+		if !ok {
+			return nil, fmt.Errorf("key is not Ed25519")
+		}
+		return edKey, nil
+	}
+
+	// Fallback: try raw base64
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		decoded, err = base64.StdEncoding.DecodeString(raw)
+		if err != nil {
+			return nil, fmt.Errorf("not PEM and not valid base64")
+		}
+	}
+
+	switch len(decoded) {
+	case 32:
+		return ed25519.PublicKey(decoded), nil
+	case 44:
+		// Raw SPKI DER without PEM wrapper, public key is last 32 bytes
+		return ed25519.PublicKey(decoded[len(decoded)-32:]), nil
+	default:
+		// Try parsing as DER
+		parsed, err := x509.ParsePKIXPublicKey(decoded)
+		if err != nil {
+			return nil, fmt.Errorf("unexpected key length %d and DER parse failed: %w", len(decoded), err)
+		}
+		edKey, ok := parsed.(ed25519.PublicKey)
+		if !ok {
+			return nil, fmt.Errorf("key is not Ed25519")
+		}
+		return edKey, nil
+	}
 }
 
 // LoadDeviceAuth reads the stored device token.
@@ -99,9 +188,15 @@ func (d *DeviceIdentity) SignChallenge(nonce string) map[string]any {
 	payload := fmt.Sprintf("openclaw-device-auth-v3:%s:%d", nonce, now)
 	signature := ed25519.Sign(d.PrivateKey, []byte(payload))
 
+	// Send raw 32-byte public key as base64url (not SPKI)
+	rawPub := d.PublicKey
+	if len(rawPub) > 32 {
+		rawPub = rawPub[len(rawPub)-32:]
+	}
+
 	return map[string]any{
 		"id":        d.DeviceID,
-		"publicKey": base64.RawURLEncoding.EncodeToString(d.PublicKey),
+		"publicKey": base64.RawURLEncoding.EncodeToString(rawPub),
 		"signature": base64.RawURLEncoding.EncodeToString(signature),
 		"signedAt":  now,
 		"nonce":     nonce,
