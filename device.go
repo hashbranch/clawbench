@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"runtime"
 	"strings"
 	"os"
 	"path/filepath"
@@ -186,14 +187,41 @@ func LoadDeviceAuth() (*DeviceAuth, error) {
 	return &auth, nil
 }
 
+// ConnectIdentity holds the client params needed for both the connect frame
+// and the device signature. Values must match exactly between both.
+type ConnectIdentity struct {
+	ClientID     string
+	ClientMode   string
+	Role         string
+	Scopes       string
+	Platform     string
+	DeviceFamily string
+	AuthToken    string
+}
+
+// DefaultConnectIdentity returns the standard connect params for ClawBench.
+func DefaultConnectIdentity(authToken string) ConnectIdentity {
+	return ConnectIdentity{
+		ClientID:     "cli",
+		ClientMode:   "cli",
+		Role:         "operator",
+		Scopes:       "operator.admin,operator.read,operator.write,operator.approvals,operator.pairing",
+		Platform:     strings.ToLower(runtime.GOOS),
+		DeviceFamily: "",
+		AuthToken:    authToken,
+	}
+}
+
 // SignChallenge signs the connect.challenge nonce using the v3 payload format.
-// v3 format: v3|<deviceId>|<clientId>|<clientMode>|<role>|<scopes>|<signedAtMs>|<token>|<nonce>|<platform>|<deviceFamily>
-func (d *DeviceIdentity) SignChallenge(nonce string, authToken string) map[string]any {
+// The signed values MUST match the connect params exactly, as the Gateway
+// rebuilds the payload from connect params to verify.
+func (d *DeviceIdentity) SignChallenge(nonce string, ci ConnectIdentity) map[string]any {
 	now := time.Now().UnixMilli()
 
-	scopes := "operator.admin,operator.read,operator.write,operator.approvals,operator.pairing"
-	payload := fmt.Sprintf("v3|%s|cli|cli|operator|%s|%d|%s|%s|cli|desktop",
-		d.DeviceID, scopes, now, authToken, nonce)
+	// v3 format: v3|deviceId|clientId|clientMode|role|scopes|signedAtMs|token|nonce|platform|deviceFamily
+	payload := fmt.Sprintf("v3|%s|%s|%s|%s|%s|%d|%s|%s|%s|%s",
+		d.DeviceID, ci.ClientID, ci.ClientMode, ci.Role, ci.Scopes,
+		now, ci.AuthToken, nonce, ci.Platform, ci.DeviceFamily)
 	signature := ed25519.Sign(d.PrivateKey, []byte(payload))
 
 	// Send raw 32-byte public key as base64url (not SPKI)

@@ -71,20 +71,24 @@ func (c *GatewayClient) Connect(ctx context.Context) error {
 	}
 
 	// Step 2: Build connect request with protocol version, auth, and device identity
+	// ConnectIdentity ensures the connect params and device signature use identical values
+	ci := DefaultConnectIdentity(c.authToken)
+
 	connectParams := map[string]any{
 		"minProtocol": protocolVersion,
 		"maxProtocol": protocolVersion,
 		"client": map[string]any{
-			"id":          "cli",
-			"displayName": "ClawBench",
-			"version":     version,
-			"platform":    "cli",
-			"mode":        "cli",
-			"instanceId":  fmt.Sprintf("clawbench-%d", time.Now().UnixMilli()),
+			"id":           ci.ClientID,
+			"displayName":  "ClawBench",
+			"version":      version,
+			"platform":     ci.Platform,
+			"mode":         ci.ClientMode,
+			"deviceFamily": ci.DeviceFamily,
+			"instanceId":   fmt.Sprintf("clawbench-%d", time.Now().UnixMilli()),
 		},
 		"caps":   []string{"tool-events"},
-		"role":   "operator",
-		"scopes": []string{"operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"},
+		"role":   ci.Role,
+		"scopes": strings.Split(ci.Scopes, ","),
 		"auth": map[string]any{
 			"token": c.authToken,
 		},
@@ -95,7 +99,7 @@ func (c *GatewayClient) Connect(ctx context.Context) error {
 	if err != nil {
 		fmt.Printf("Warning: %s (connecting without device identity, scopes may be limited)\n", err)
 	} else {
-		connectParams["device"] = deviceIdentity.SignChallenge(nonce, c.authToken)
+		connectParams["device"] = deviceIdentity.SignChallenge(nonce, ci)
 
 		// Also use device token if available
 		deviceAuth, _ := LoadDeviceAuth()
