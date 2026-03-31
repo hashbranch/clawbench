@@ -63,31 +63,53 @@ func (c *GatewayClient) Connect(ctx context.Context) error {
 
 	var challengeFrame map[string]any
 	json.Unmarshal(challengeMsg, &challengeFrame)
-	// Challenge is informational for device auth; we use token auth so we just need to read it
 
-	// Step 2: Send connect request with protocol version and auth
+	// Extract nonce from challenge for device identity signing
+	nonce := ""
+	if payload, ok := challengeFrame["payload"].(map[string]any); ok {
+		nonce, _ = payload["nonce"].(string)
+	}
+
+	// Step 2: Build connect request with protocol version, auth, and device identity
+	connectParams := map[string]any{
+		"minProtocol": protocolVersion,
+		"maxProtocol": protocolVersion,
+		"client": map[string]any{
+			"id":          "cli",
+			"displayName": "ClawBench",
+			"version":     version,
+			"platform":    "cli",
+			"mode":        "cli",
+			"instanceId":  fmt.Sprintf("clawbench-%d", time.Now().UnixMilli()),
+		},
+		"caps":   []string{"tool-events"},
+		"role":   "operator",
+		"scopes": []string{"operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"},
+		"auth": map[string]any{
+			"token": c.authToken,
+		},
+	}
+
+	// Load and attach device identity from OpenClaw CLI's stored credentials
+	deviceIdentity, err := LoadDeviceIdentity()
+	if err != nil {
+		fmt.Printf("Warning: %s (connecting without device identity, scopes may be limited)\n", err)
+	} else {
+		connectParams["device"] = deviceIdentity.SignChallenge(nonce)
+
+		// Also use device token if available
+		deviceAuth, _ := LoadDeviceAuth()
+		if deviceAuth != nil && deviceAuth.DeviceToken != "" {
+			auth := connectParams["auth"].(map[string]any)
+			auth["deviceToken"] = deviceAuth.DeviceToken
+		}
+	}
+
 	connectFrame := map[string]any{
 		"type":   "req",
 		"id":     c.nextID(),
 		"method": "connect",
-		"params": map[string]any{
-			"minProtocol": protocolVersion,
-			"maxProtocol": protocolVersion,
-			"client": map[string]any{
-				"id":          "cli",
-				"displayName": "ClawBench",
-				"version":     version,
-				"platform":    "cli",
-				"mode":        "cli",
-				"instanceId":  fmt.Sprintf("clawbench-%d", time.Now().UnixMilli()),
-			},
-			"caps":  []string{"tool-events"}, // opt in to tool lifecycle events
-			"role":  "operator",
-			"scopes": []string{"operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"},
-			"auth": map[string]any{
-				"token": c.authToken,
-			},
-		},
+		"params": connectParams,
 	}
 	if err := c.conn.WriteJSON(connectFrame); err != nil {
 		c.conn.Close()
