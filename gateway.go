@@ -83,7 +83,7 @@ func (c *GatewayClient) Connect(ctx context.Context) error {
 			},
 			"caps":  []string{"tool-events"}, // opt in to tool lifecycle events
 			"role":  "operator",
-			"scopes": []string{"chat", "sessions", "operator.write"},
+			"scopes": []string{"operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"},
 			"auth": map[string]any{
 				"token": c.authToken,
 			},
