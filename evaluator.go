@@ -23,6 +23,8 @@ func runEvaluator(ec EvalConfig, resp GatewayResponse, wallClock float64, worksp
 	switch ec.Type {
 	case "exact_match":
 		return evalExactMatch(ec, resp.Text)
+	case "gaia_exact":
+		return evalGAIAExact(ec, resp.Text)
 	case "tool_invoked":
 		return evalToolInvoked(ec, resp)
 	case "file_exists":
@@ -44,6 +46,167 @@ func runEvaluator(ec EvalConfig, resp GatewayResponse, wallClock float64, worksp
 			Details: fmt.Sprintf("unknown evaluator type: %s", ec.Type),
 		}
 	}
+}
+
+// evalGAIAExact implements the GAIA benchmark's exact-match scoring.
+// It normalizes both the model answer and ground truth by:
+// - Lowercasing
+// - Removing all whitespace
+// - Removing punctuation
+// - For numbers: comparing numeric values (handles $, %, commas)
+// - For comma/semicolon-separated lists: comparing element-by-element
+//
+// This matches the official GAIA scorer from the benchmark paper.
+func evalGAIAExact(ec EvalConfig, text string) EvalResult {
+	if len(ec.Patterns) == 0 {
+		return EvalResult{Type: "gaia_exact", Score: 0, Weight: ec.Weight, Details: "no ground truth specified"}
+	}
+	groundTruth := ec.Patterns[0] // GAIA uses a single ground truth answer
+
+	// Extract the final answer from the response text.
+	// Agents often wrap answers in various formats; try to extract the core answer.
+	answer := extractGAIAAnswer(text)
+
+	matched := gaiaQuestionScorer(answer, groundTruth)
+
+	score := 0.0
+	if matched {
+		score = 1.0
+	}
+	return EvalResult{
+		Type:    "gaia_exact",
+		Score:   score,
+		Weight:  ec.Weight,
+		Passed:  matched,
+		Details: fmt.Sprintf("expected=%q, extracted=%q, matched=%v", groundTruth, answer, matched),
+	}
+}
+
+// gaiaQuestionScorer implements the official GAIA scoring logic.
+func gaiaQuestionScorer(modelAnswer, groundTruth string) bool {
+	// If ground truth is a number, compare numerically
+	if isFloat(groundTruth) {
+		normalizedAnswer := normalizeNumberStr(modelAnswer)
+		gt, _ := parseFloat(groundTruth)
+		return normalizedAnswer == gt
+	}
+
+	// If ground truth contains commas or semicolons, compare as list
+	if strings.ContainsAny(groundTruth, ",;") {
+		return gaiaListCompare(modelAnswer, groundTruth)
+	}
+
+	// Otherwise compare as normalized strings
+	return gaiaStrNormalize(modelAnswer) == gaiaStrNormalize(groundTruth)
+}
+
+// gaiaListCompare compares comma/semicolon-separated lists element-by-element.
+func gaiaListCompare(modelAnswer, groundTruth string) bool {
+	gtElems := splitOnAny(groundTruth, ",;")
+	maElems := splitOnAny(modelAnswer, ",;")
+	if len(gtElems) != len(maElems) {
+		return false
+	}
+	for i, gt := range gtElems {
+		ma := maElems[i]
+		if isFloat(strings.TrimSpace(gt)) {
+			if normalizeNumberStr(ma) != normalizeNumberStr(gt) {
+				return false
+			}
+		} else {
+			if gaiaStrNormalize(ma) != gaiaStrNormalize(gt) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// gaiaStrNormalize removes whitespace, punctuation, and lowercases the string.
+func gaiaStrNormalize(s string) string {
+	s = strings.ToLower(s)
+	// Remove all whitespace
+	s = strings.Join(strings.Fields(s), "")
+	// Remove punctuation
+	var b strings.Builder
+	for _, r := range s {
+		if !strings.ContainsRune("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// normalizeNumberStr strips common formatting ($, %, commas) and parses as float.
+func normalizeNumberStr(s string) float64 {
+	s = strings.TrimSpace(s)
+	for _, ch := range []string{"$", "%", ","} {
+		s = strings.Replace(s, ch, "", -1)
+	}
+	f, err := parseFloat(s)
+	if err != nil {
+		return -999999.999 // sentinel for non-parseable
+	}
+	return f
+}
+
+func isFloat(s string) bool {
+	s = strings.TrimSpace(s)
+	for _, ch := range []string{"$", "%", ","} {
+		s = strings.Replace(s, ch, "", -1)
+	}
+	_, err := parseFloat(s)
+	return err == nil
+}
+
+func parseFloat(s string) (float64, error) {
+	s = strings.TrimSpace(s)
+	var f float64
+	_, err := fmt.Sscanf(s, "%f", &f)
+	return f, err
+}
+
+func splitOnAny(s string, chars string) []string {
+	f := func(r rune) bool { return strings.ContainsRune(chars, r) }
+	return strings.FieldsFunc(s, f)
+}
+
+// extractGAIAAnswer tries to extract a concise final answer from agent output.
+// Agents often produce verbose responses; we look for common answer patterns.
+func extractGAIAAnswer(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+
+	// Look for explicit "FINAL ANSWER:" or "The answer is:" patterns (case-insensitive)
+	patterns := []string{
+		`(?i)(?:final answer|the answer is|answer:)\s*:?\s*(.+?)(?:\n|$)`,
+		`(?i)(?:the result is|result:)\s*:?\s*(.+?)(?:\n|$)`,
+	}
+	for _, p := range patterns {
+		re := regexp.MustCompile(p)
+		if m := re.FindStringSubmatch(text); len(m) > 1 {
+			ans := strings.TrimSpace(m[1])
+			// Strip leading colon/punctuation that might be captured
+			ans = strings.TrimLeft(ans, ": ")
+			if ans != "" {
+				return ans
+			}
+		}
+	}
+
+	// If the response is short (likely just the answer), use it directly
+	lines := strings.Split(text, "\n")
+	// Use the last non-empty line as the answer (agents often put answer last)
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line != "" {
+			return line
+		}
+	}
+
+	return text
 }
 
 // evalExactMatch checks if the response text matches any of the regex patterns.
@@ -339,7 +502,7 @@ func evalExecCheck(ec EvalConfig, workspacePath string) EvalResult {
 
 // ComputeCorrectness aggregates correctness-related evaluator scores.
 func ComputeCorrectness(results []EvalResult) float64 {
-	return weightedAverage(results, "exact_match", "format_bullets", "exec_check")
+	return weightedAverage(results, "exact_match", "format_bullets", "exec_check", "gaia_exact")
 }
 
 // ComputeToolAccuracy aggregates tool-related evaluator scores.

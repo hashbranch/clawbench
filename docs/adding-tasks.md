@@ -63,4 +63,18 @@ go build -o clawbench .
 - **Fixed time budgets.** Set `TimeBudget` to something reasonable for the task. This normalizes comparison.
 - **Deterministic evaluation where possible.** Regex patterns and file checks are deterministic. Use `--repeat N` for tasks where LLM nondeterminism matters.
 
+## 6. Adapting public benchmarks (GAIA example)
+
+ClawBench supports embedding tasks from published academic benchmarks. The GAIA Level 1 tasks (`gaia_l1_*`) are a good example of this pattern:
+
+1. **Source questions** from the benchmark dataset (e.g., HuggingFace, paper appendices)
+2. **Filter** for questions answerable with your agent's tools (skip image/audio/PDF tasks if your setup doesn't support them)
+3. **Use the right evaluator**: `gaia_exact` for GAIA-style exact string matching, `exact_match` for regex-based checks
+4. **Add category and tags** matching the benchmark (`gaia_l1`, tags: `gaia`, `level1`, etc.)
+5. **Set appropriate time budgets** — multi-step reasoning tasks may need 120s+
+
+The `gaia_exact` evaluator implements normalized comparison (lowercase, strip whitespace/punctuation, numeric normalization) matching the official GAIA scorer. Use it for any task where the ground truth is a short, unambiguous factual answer.
+
+See [docs/gaia.md](gaia.md) for details on the GAIA benchmark and how to add more questions from the full dataset.
+
 

@@ -1,6 +1,6 @@
 # Evaluators
 
-ClawBench has 6 built-in evaluators. Each produces a score (0.0-1.0) and a human-readable details string.
+ClawBench has 7 built-in evaluators. Each produces a score (0.0-1.0) and a human-readable details string.
 
 ## exact_match
 
@@ -15,6 +15,35 @@ Input:  "The weather in SF is 65°F and sunny"
 Pattern: "(?i)sunny|clear"
 Score:  1.0
 ```
+
+## gaia_exact
+
+Implements the official GAIA benchmark scoring for exact answer matching. Designed for questions with short, unambiguous factual answers.
+
+- **Config**: `Patterns []string` — single ground truth answer (first element used)
+- **Normalization**:
+  - Strings: lowercased, all whitespace removed, punctuation stripped
+  - Numbers: `$`, `%`, `,` removed before float comparison
+  - Lists (comma/semicolon-separated): element-by-element comparison
+- **Answer extraction**: Tries to extract the answer from verbose agent responses by looking for "FINAL ANSWER:", "The answer is:", etc., then falls back to the last non-empty line
+- **Scoring**: 1.0 if match, 0.0 if not (binary, no partial credit)
+
+```
+Ground truth: "Neil Armstrong, 1969"
+Response:     "The first person on the Moon was Neil Armstrong, in 1969."
+Extracted:    "Neil Armstrong, in 1969."  (last line)
+Normalized:   ["neilarmstrong", "in1969"] vs ["neilarmstrong", "1969"]
+Score:        0.0 (list element mismatch)
+```
+
+```
+Ground truth: "255"
+Response:     "FINAL ANSWER: 255"
+Extracted:    "255"
+Score:        1.0
+```
+
+Part of the **Correctness** composite score.
 
 ## tool_invoked
 
@@ -63,7 +92,7 @@ Built-in evaluator for the instruction_following task. Checks structured output 
 
 Individual evaluator results are aggregated into two composite dimensions:
 
-- **Correctness** = weighted average of `exact_match` + `format_bullets` evaluators
+- **Correctness** = weighted average of `exact_match` + `format_bullets` + `gaia_exact` evaluators
 - **Tool Accuracy** = weighted average of `tool_invoked` + `file_exists` evaluators
 
 Weights are relative within each dimension. An evaluator with weight 1.0 counts 2x one with weight 0.5.

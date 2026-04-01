@@ -168,7 +168,7 @@ func cmdRun(args []string) {
 		}
 		fmt.Printf("Loaded %d Exercism Python exercises\n", len(tasks))
 	default:
-		tasks = BuiltinTasks()
+		tasks = AllTasks()
 	}
 
 	if taskID != "" {
@@ -279,7 +279,7 @@ func cmdCompare(args []string) {
 }
 
 func cmdList() {
-	tasks := BuiltinTasks()
+	tasks := AllTasks()
 	fmt.Printf("Available benchmark tasks (%d):\n\n", len(tasks))
 	for _, t := range tasks {
 		fmt.Printf("  %-25s  %s\n", t.ID, t.Name)

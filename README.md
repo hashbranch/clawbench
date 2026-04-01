@@ -76,6 +76,19 @@ clawbench compare results/setup-a.json results/setup-b.json
 
 **Instruction Following** (`instruction_following`) — Tests structured output adherence: exactly 3 bullet points, each under 20 words. Exercises whether SOUL.md and AGENTS.md configuration affects format compliance. 60s budget.
 
+### GAIA Level 1 Tasks
+
+15 tasks inspired by the [GAIA benchmark](https://arxiv.org/abs/2311.12983) (General AI Assistants, Mialon et al. 2023). GAIA is the standard benchmark for evaluating AI assistants on real-world tasks — 466 questions requiring reasoning, web browsing, and tool use, where humans score 92% but top AI systems score ~75%.
+
+ClawBench includes GAIA-style Level 1 questions (`gaia_l1_001` through `gaia_l1_015`) testing:
+- **Math & calculation**: Prime sums, unit conversion, tax calculation, base conversion
+- **Factual lookup**: Chemical elements, historical facts, geographic knowledge
+- **Reasoning**: Date calculation, Roman numerals, sequence patterns, string manipulation
+
+Each task uses the `gaia_exact` evaluator, which implements GAIA's official scoring: normalized exact string matching with whitespace/punctuation removal, numeric comparison, and list comparison. 120s budget per task.
+
+**Published GAIA baselines** (full 165-question validation set): Claude Sonnet 4.5 achieves 74.55% overall (82% on Level 1). See [docs/gaia.md](docs/gaia.md) for details and leaderboard comparison.
+
 ## Metrics
 
 Each task is scored on independent metrics (not composited into a single score):

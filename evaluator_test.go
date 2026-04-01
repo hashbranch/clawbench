@@ -256,6 +256,158 @@ func TestFormatBullets_NumberedList(t *testing.T) {
 	}
 }
 
+// --- GAIA Exact evaluator tests ---
+
+func TestGAIAExact_StringMatch(t *testing.T) {
+	ec := EvalConfig{Type: "gaia_exact", Patterns: []string{"Canberra"}, Weight: 1.0}
+	result := evalGAIAExact(ec, "Canberra")
+	if result.Score != 1.0 {
+		t.Errorf("expected score 1.0, got %f (%s)", result.Score, result.Details)
+	}
+}
+
+func TestGAIAExact_CaseInsensitive(t *testing.T) {
+	ec := EvalConfig{Type: "gaia_exact", Patterns: []string{"Canberra"}, Weight: 1.0}
+	result := evalGAIAExact(ec, "CANBERRA")
+	if result.Score != 1.0 {
+		t.Errorf("expected score 1.0 for case-insensitive match, got %f (%s)", result.Score, result.Details)
+	}
+}
+
+func TestGAIAExact_WhitespaceNormalization(t *testing.T) {
+	ec := EvalConfig{Type: "gaia_exact", Patterns: []string{"Neil Armstrong"}, Weight: 1.0}
+	result := evalGAIAExact(ec, "  Neil   Armstrong  ")
+	if result.Score != 1.0 {
+		t.Errorf("expected score 1.0 with whitespace normalization, got %f (%s)", result.Score, result.Details)
+	}
+}
+
+func TestGAIAExact_PunctuationRemoval(t *testing.T) {
+	ec := EvalConfig{Type: "gaia_exact", Patterns: []string{"sea gull"}, Weight: 1.0}
+	result := evalGAIAExact(ec, "sea-gull.")
+	if result.Score != 1.0 {
+		t.Errorf("expected score 1.0 with punctuation normalization, got %f (%s)", result.Score, result.Details)
+	}
+}
+
+func TestGAIAExact_NumericMatch(t *testing.T) {
+	ec := EvalConfig{Type: "gaia_exact", Patterns: []string{"42"}, Weight: 1.0}
+	result := evalGAIAExact(ec, "42")
+	if result.Score != 1.0 {
+		t.Errorf("expected score 1.0 for numeric match, got %f", result.Score)
+	}
+}
+
+func TestGAIAExact_NumericWithCommas(t *testing.T) {
+	ec := EvalConfig{Type: "gaia_exact", Patterns: []string{"1000000"}, Weight: 1.0}
+	result := evalGAIAExact(ec, "1,000,000")
+	if result.Score != 1.0 {
+		t.Errorf("expected score 1.0 for numeric match with commas, got %f (%s)", result.Score, result.Details)
+	}
+}
+
+func TestGAIAExact_NumericWithDollarSign(t *testing.T) {
+	ec := EvalConfig{Type: "gaia_exact", Patterns: []string{"38.79"}, Weight: 1.0}
+	result := evalGAIAExact(ec, "$38.79")
+	if result.Score != 1.0 {
+		t.Errorf("expected score 1.0 for numeric match with dollar sign, got %f (%s)", result.Score, result.Details)
+	}
+}
+
+func TestGAIAExact_ListMatch(t *testing.T) {
+	ec := EvalConfig{Type: "gaia_exact", Patterns: []string{"Neil Armstrong, 1969"}, Weight: 1.0}
+	result := evalGAIAExact(ec, "Neil Armstrong, 1969")
+	if result.Score != 1.0 {
+		t.Errorf("expected score 1.0 for list match, got %f (%s)", result.Score, result.Details)
+	}
+}
+
+func TestGAIAExact_ListDifferentLength(t *testing.T) {
+	ec := EvalConfig{Type: "gaia_exact", Patterns: []string{"a, b, c"}, Weight: 1.0}
+	result := evalGAIAExact(ec, "a, b")
+	if result.Score != 0.0 {
+		t.Errorf("expected score 0.0 for list length mismatch, got %f", result.Score)
+	}
+}
+
+func TestGAIAExact_Mismatch(t *testing.T) {
+	ec := EvalConfig{Type: "gaia_exact", Patterns: []string{"Paris"}, Weight: 1.0}
+	result := evalGAIAExact(ec, "London")
+	if result.Score != 0.0 {
+		t.Errorf("expected score 0.0 for mismatch, got %f", result.Score)
+	}
+}
+
+func TestGAIAExact_ExtractAnswer(t *testing.T) {
+	ec := EvalConfig{Type: "gaia_exact", Patterns: []string{"42"}, Weight: 1.0}
+	result := evalGAIAExact(ec, "After careful analysis, the answer is: 42")
+	if result.Score != 1.0 {
+		t.Errorf("expected score 1.0 when extracting from verbose response, got %f (%s)", result.Score, result.Details)
+	}
+}
+
+func TestGAIAExact_FinalAnswerExtraction(t *testing.T) {
+	ec := EvalConfig{Type: "gaia_exact", Patterns: []string{"255"}, Weight: 1.0}
+	result := evalGAIAExact(ec, "Let me calculate...\n\nFINAL ANSWER: 255")
+	if result.Score != 1.0 {
+		t.Errorf("expected score 1.0 extracting FINAL ANSWER, got %f (%s)", result.Score, result.Details)
+	}
+}
+
+func TestGAIAExact_NoPatterns(t *testing.T) {
+	ec := EvalConfig{Type: "gaia_exact", Patterns: nil, Weight: 1.0}
+	result := evalGAIAExact(ec, "hello")
+	if result.Score != 0.0 {
+		t.Errorf("expected score 0.0 with no patterns, got %f", result.Score)
+	}
+}
+
+func TestExtractGAIAAnswer_LastLine(t *testing.T) {
+	answer := extractGAIAAnswer("Some reasoning...\n\nLet me think about this.\n\n42")
+	if answer != "42" {
+		t.Errorf("expected '42', got %q", answer)
+	}
+}
+
+func TestGaiaStrNormalize(t *testing.T) {
+	tests := []struct {
+		input, expected string
+	}{
+		{"Hello World!", "helloworld"},
+		{"  Neil  Armstrong  ", "neilarmstrong"},
+		{"sea-gull.", "seagull"},
+		{"Structured Query Language", "structuredquerylanguage"},
+	}
+	for _, tc := range tests {
+		got := gaiaStrNormalize(tc.input)
+		if got != tc.expected {
+			t.Errorf("gaiaStrNormalize(%q) = %q, want %q", tc.input, got, tc.expected)
+		}
+	}
+}
+
+func TestGAIATasks_Count(t *testing.T) {
+	tasks := GAIATasks()
+	if len(tasks) != 15 {
+		t.Errorf("expected 15 GAIA tasks, got %d", len(tasks))
+	}
+	// Verify all have gaia_l1 category
+	for _, task := range tasks {
+		if task.Category != "gaia_l1" {
+			t.Errorf("task %s has category %q, expected gaia_l1", task.ID, task.Category)
+		}
+	}
+}
+
+func TestAllTasks_IncludesGAIA(t *testing.T) {
+	all := AllTasks()
+	builtin := BuiltinTasks()
+	gaia := GAIATasks()
+	if len(all) != len(builtin)+len(gaia) {
+		t.Errorf("AllTasks() returned %d tasks, expected %d+%d=%d", len(all), len(builtin), len(gaia), len(builtin)+len(gaia))
+	}
+}
+
 func TestComputeCorrectness(t *testing.T) {
 	results := []EvalResult{
 		{Type: "exact_match", Score: 0.5, Weight: 1.0},
