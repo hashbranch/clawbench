@@ -10,7 +10,9 @@ import (
 	"time"
 )
 
-const version = "0.8.1"
+// version is set at build time via -ldflags "-X main.version=..."
+// Falls back to "dev" for local builds without flags.
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
