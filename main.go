@@ -27,6 +27,12 @@ func main() {
 		cmdCompare(os.Args[2:])
 	case "list":
 		cmdList()
+	case "config":
+		cmdConfig(os.Args[2:])
+	case "doctor":
+		cmdDoctor()
+	case "update":
+		cmdUpdate()
 	case "version":
 		fmt.Printf("clawbench v%s\n", version)
 	case "help", "--help", "-h":
@@ -42,10 +48,13 @@ func printUsage() {
 	fmt.Printf(`clawbench v%s — Benchmark your OpenClaw setup
 
 Usage:
-  clawbench run [flags]        Run benchmark tasks against your Gateway
+  clawbench run [flags]            Run benchmark tasks against your Gateway
   clawbench compare A.json B.json  Compare two benchmark result files
-  clawbench list               List available benchmark tasks
-  clawbench version            Print version
+  clawbench list                   List available benchmark tasks
+  clawbench config [set|get|list]  Manage persistent configuration
+  clawbench doctor                 Check environment and connectivity
+  clawbench update                 Download and install the latest version
+  clawbench version                Print version
 
 Run flags:
   --mode MODE       Backend mode: "cli" (default) or "websocket"
@@ -72,11 +81,17 @@ Examples:
 }
 
 func cmdRun(args []string) {
-	// Parse flags
-	mode := "cli" // default to CLI backend
+	// Load persistent config, then override with CLI flags
+	cfg := LoadConfig()
+
+	// Parse flags (empty strings = use config)
+	mode := ""
 	debug := false
-	benchmark := "" // "", "builtin", "exercism"
+	benchmark := ""
 	hfToken := os.Getenv("HF_TOKEN")
+	if hfToken == "" {
+		hfToken = cfg.HFToken
+	}
 	gaiaOnly := false
 	gatewayURL := "ws://127.0.0.1:18789"
 	authToken := os.Getenv("OPENCLAW_AUTH_TOKEN")
@@ -147,6 +162,9 @@ func cmdRun(args []string) {
 			os.Exit(1)
 		}
 	}
+
+	// Apply config defaults for any flags not set via CLI
+	mode, gatewayURL, authToken, benchmark, workspacePath, debug = ApplyConfig(cfg, mode, gatewayURL, authToken, benchmark, workspacePath, debug)
 
 	if outputPath == "" {
 		os.MkdirAll("results", 0755)

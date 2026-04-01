@@ -1,4 +1,4 @@
-module github.com/tommerkle/clawbench
+module github.com/hashbranch/clawbench
 
 go 1.26.1
 
