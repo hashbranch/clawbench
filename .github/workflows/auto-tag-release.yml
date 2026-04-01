@@ -1,0 +1,52 @@
+name: Auto-tag release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    if: ${{ !contains(github.event.head_commit.message, '[skip release]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --force --tags origin
+
+      - name: Create next patch tag
+        run: |
+          if git tag --points-at HEAD | grep -q '^v'; then
+            echo "HEAD is already tagged; nothing to do."
+            exit 0
+          fi
+
+          LATEST_TAG=$(git tag --list 'v*' --sort=-version:refname | head -n1)
+          if [ -z "$LATEST_TAG" ]; then
+            NEXT_TAG="v0.1.0"
+          else
+            BASE_VERSION=${LATEST_TAG#v}
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+            PATCH=$((PATCH + 1))
+            NEXT_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          fi
+
+          if git rev-parse "$NEXT_TAG" >/dev/null 2>&1; then
+            echo "$NEXT_TAG already exists; nothing to do."
+            exit 0
+          fi
+
+          echo "Creating tag: $NEXT_TAG"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$NEXT_TAG" -m "$NEXT_TAG"
+          git push origin "$NEXT_TAG"
