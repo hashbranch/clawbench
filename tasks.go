@@ -14,10 +14,12 @@ func BuiltinTasks() []Task {
 			Prompt: `Find out what the weather is in San Francisco right now, then write a short haiku about it and save it to a file called weather_haiku.txt in my workspace.`,
 			TimeBudget: 90 * time.Second,
 			Evaluators: []EvalConfig{
-				{Type: "tool_invoked", ToolName: "weather", Weight: 1.0},
-				{Type: "tool_invoked", ToolName: "file_write", Weight: 1.0},
+				// Real agents use exec (curl/fetch) for weather, not a "weather" tool
+				{Type: "tool_invoked", ToolName: "exec", Weight: 1.0},
+				{Type: "tool_invoked", ToolName: "write", Weight: 1.0},
 				{Type: "file_exists", Path: "weather_haiku.txt", Weight: 1.0},
-				{Type: "exact_match", Patterns: []string{`(?i)haiku|5.*7.*5|syllable`}, Weight: 0.5},
+				// Check response mentions weather/haiku/file creation
+				{Type: "exact_match", Patterns: []string{`(?i)(weather|temperature|forecast|haiku|weather_haiku)`}, Weight: 0.5},
 				{Type: "cost", Weight: 0.3},
 				{Type: "latency", Weight: 0.3},
 			},

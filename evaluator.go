@@ -226,17 +226,25 @@ func evalLatency(ec EvalConfig, wallClockSeconds float64) EvalResult {
 func evalFormatBullets(ec EvalConfig, text string) EvalResult {
 	lines := strings.Split(strings.TrimSpace(text), "\n")
 
-	// Find bullet lines (lines starting with -, *, or numbered)
+	// Find bullet lines: -, *, •, numbered (with any whitespace after)
 	var bullets []string
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
 		}
-		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") ||
-			strings.HasPrefix(trimmed, "1.") || strings.HasPrefix(trimmed, "2.") ||
-			strings.HasPrefix(trimmed, "3.") || strings.HasPrefix(trimmed, "1)") ||
-			strings.HasPrefix(trimmed, "2)") || strings.HasPrefix(trimmed, "3)") {
+		// Match: - text, * text, • text, 1. text, 1) text (with any whitespace)
+		isBullet := false
+		for _, prefix := range []string{"-", "*", "•", "1.", "2.", "3.", "4.", "5.", "1)", "2)", "3)", "4)", "5)"} {
+			if strings.HasPrefix(trimmed, prefix) {
+				rest := strings.TrimLeft(trimmed[len(prefix):], " \t")
+				if rest != "" {
+					isBullet = true
+					break
+				}
+			}
+		}
+		if isBullet {
 			bullets = append(bullets, trimmed)
 		}
 	}
@@ -255,11 +263,11 @@ func evalFormatBullets(ec EvalConfig, text string) EvalResult {
 	// Check: each bullet under 20 words (strip bullet prefix before counting)
 	allUnder20 := true
 	for i, b := range bullets {
-		// Strip bullet prefix (-, *, 1., 1)) before counting words
+		// Strip bullet prefix before counting words
 		stripped := b
-		for _, prefix := range []string{"- ", "* ", "1. ", "2. ", "3. ", "1) ", "2) ", "3) "} {
+		for _, prefix := range []string{"-", "*", "•", "1.", "2.", "3.", "4.", "5.", "1)", "2)", "3)", "4)", "5)"} {
 			if strings.HasPrefix(stripped, prefix) {
-				stripped = strings.TrimPrefix(stripped, prefix)
+				stripped = strings.TrimLeft(stripped[len(prefix):], " \t")
 				break
 			}
 		}
