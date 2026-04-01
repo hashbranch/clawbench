@@ -85,12 +85,15 @@ type BenchmarkResults struct {
 
 // Summary aggregates across all task runs (supports --repeat N with median/stddev).
 type Summary struct {
-	TotalTasks     int     `json:"total_tasks"`
-	TotalRuns      int     `json:"total_runs"`
-	RepeatCount    int     `json:"repeat_count"`
-	AvgCorrectness float64 `json:"avg_correctness"`
-	AvgLatency     float64 `json:"avg_latency_seconds"`
-	TotalCost      float64 `json:"total_cost_usd"`
+	TotalTasks      int     `json:"total_tasks"`
+	TotalRuns       int     `json:"total_runs"`
+	RepeatCount     int     `json:"repeat_count"`
+	AvgCorrectness  float64 `json:"avg_correctness"`
+	AvgLatency      float64 `json:"avg_latency_seconds"`
+	TotalCost       float64 `json:"total_cost_usd"`
+	TotalTokens     int     `json:"total_tokens"`
+	ScorePerKTokens float64 `json:"score_per_1k_tokens,omitempty"` // efficiency: correctness per 1K tokens
+	ScorePerDollar  float64 `json:"score_per_dollar,omitempty"`    // efficiency: correctness per dollar
 }
 
 // Backend is the interface for sending prompts to OpenClaw.

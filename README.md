@@ -6,14 +6,17 @@ ClawBench connects to your running OpenClaw Gateway, runs standardized benchmark
 
 ## Install
 
+Download the latest binary from [GitHub Releases](https://github.com/hashbranch/clawbench/releases):
+
 ```bash
-go install github.com/tommerkle/clawbench@latest
+curl -sL https://github.com/hashbranch/clawbench/releases/latest/download/clawbench-darwin-arm64 -o clawbench
+chmod +x clawbench
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/tommerkle/clawbench.git
+git clone https://github.com/hashbranch/clawbench.git
 cd clawbench
 go build -o clawbench .
 ```
@@ -21,45 +24,77 @@ go build -o clawbench .
 ## Usage
 
 ```bash
-# List available benchmark tasks
-clawbench list
+# Run builtin benchmark tasks
+clawbench run --mode websocket --token "your-token" --label "my-setup"
 
-# Run all benchmarks against your local Gateway
-clawbench run --label "my-setup-v2"
+# Run PinchBench-adapted tasks (real-world agent scenarios)
+clawbench run --benchmark pinchbench --mode websocket --token "your-token" --label "my-setup"
 
-# Run a specific task with 3 repeats for statistical rigor
-clawbench run --task skill_tool_chain --repeat 3
+# Run Exercism coding benchmark (34 Python exercises)
+clawbench run --benchmark exercism --mode websocket --token "your-token" --label "my-setup"
+
+# Run a specific task
+clawbench run --benchmark pinchbench --task pinch/weather_script
 
 # Compare two result files
 clawbench compare results/setup-a.json results/setup-b.json
+
+# List available tasks
+clawbench list
 ```
 
 ### Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--mode` | `cli` | Backend: `websocket` (recommended) or `cli` |
+| `--benchmark` | builtin | Suite: `builtin`, `pinchbench`, or `exercism` |
 | `--gateway` | `ws://127.0.0.1:18789` | Gateway WebSocket URL |
 | `--token` | `$OPENCLAW_AUTH_TOKEN` | Auth token |
 | `--label` | timestamp | Label for this run |
 | `--task` | all | Run specific task only |
 | `--repeat` | 1 | Repeat each task N times |
-| `--workspace` | | Path to OpenClaw workspace (for file checks) |
+| `--workspace` | | OpenClaw workspace path (for file checks) |
 | `--output` | `results/<label>.json` | Output file path |
+| `--debug` | false | Dump raw WebSocket frames |
 
-## Benchmark Tasks
+## Benchmark Suites
 
-**Skill Discovery + Tool Chaining** — Tests whether your setup can find and chain the right skills (weather lookup + file write). Exercises skill discovery, tool chaining, and output generation.
+### Builtin (2 tasks)
 
-**Instruction Following** — Tests whether your SOUL.md and AGENTS.md configuration affects how well the agent follows structured instructions (exact bullet count, word limits).
+Quick smoke test for your setup.
+
+- **Skill Discovery + Tool Chaining** -- Can your agent find and chain tools (weather + file write)?
+- **Instruction Following** -- Does your SOUL.md affect how well the agent follows structured instructions?
+
+### PinchBench (8 tasks)
+
+Real-world agent tasks adapted from [PinchBench](https://github.com/pinchbench/skill). Covers coding, file operations, comprehension, multi-step workflows, and organization.
+
+- **Sanity Check** -- fail-fast gate, aborts if the agent can't respond
+- **Weather Script** -- create a working Python script using an API
+- **File Structure** -- create a project scaffold (src/, README, .gitignore)
+- **Search and Replace** -- find and replace across config files
+- **Multi-step Workflow** -- read config, write code, write docs
+- **Memory Retrieval** -- read a file, extract a fact, save the answer
+- **Email Triage** -- categorize and prioritize 10 emails
+- **Blog Post** -- write a structured 500-word blog post
+
+PinchBench originally benchmarks models (holding config constant). ClawBench adapts these tasks to benchmark configurations (holding model constant).
+
+### Exercism (34 tasks)
+
+Python coding exercises from the [Aider Polyglot Benchmark](https://github.com/Aider-AI/polyglot-benchmark). Auto-downloaded on first run. Each exercise has a stub file and a unittest test suite. Scores are comparable to published numbers on the [Aider Leaderboard](https://aider.chat/docs/leaderboards/).
 
 ## Metrics
 
 Each task is scored on independent metrics (not composited into a single score):
 
-- **Correctness** — Did the agent produce the right answer?
-- **Tool Accuracy** — Did it use the right tools/skills?
-- **Latency** — How fast from prompt to response?
-- **Cost** — Token cost (real if available, estimated otherwise)
+- **Correctness** -- Did the agent produce the right answer?
+- **Tool Accuracy** -- Did it use the right tools/skills?
+- **Latency** -- Wall-clock time from prompt to response
+- **Cost** -- Token cost (real from Gateway, or estimated)
+- **Efficiency** -- Score per 1K tokens, score per dollar
 
 ## How Comparison Works
 
@@ -69,6 +104,14 @@ Each task is scored on independent metrics (not composited into a single score):
 4. `clawbench compare` shows a side-by-side table with deltas
 
 Results capture config metadata (model, temperature, Gateway version) so you know what you're comparing.
+
+## Acknowledgments
+
+- [PinchBench](https://github.com/pinchbench/skill) -- Task designs and real-world agent scenarios adapted for configuration benchmarking. Original project benchmarks LLM models in OpenClaw.
+- [Aider Polyglot Benchmark](https://github.com/Aider-AI/polyglot-benchmark) -- Exercism Python exercises used for the coding benchmark suite.
+- [Karpathy's AutoResearch](https://github.com/karpathy/autoresearch) -- Inspiration for fixed time budgets and immutable evaluation harness design.
+- [Meta-Harness](https://arxiv.org/html/2603.28052v1) -- Inspiration for full execution trace capture over scalar scores.
+- [OpenClaw](https://github.com/openclaw/openclaw) -- The agent platform this tool benchmarks.
 
 ## License
 

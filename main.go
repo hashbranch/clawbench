@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const version = "0.6.0"
+const version = "0.7.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -52,7 +52,7 @@ Run flags:
   --gateway URL     Gateway WebSocket URL (default: ws://127.0.0.1:18789, websocket mode only)
   --token TOKEN     Auth token (websocket mode only, or set OPENCLAW_AUTH_TOKEN)
   --label NAME      Label for this benchmark run (default: timestamp)
-  --benchmark NAME  Benchmark suite: "builtin" (default) or "exercism"
+  --benchmark NAME  Benchmark suite: "builtin" (default), "exercism", or "pinchbench"
   --task ID         Run a specific task only (default: all)
   --repeat N        Repeat each task N times (default: 1)
   --workspace PATH  Path to OpenClaw workspace (for file_exists checks)
@@ -61,7 +61,8 @@ Run flags:
 Examples:
   clawbench run --label "my-setup-v2"
   clawbench run --benchmark exercism --label "my-setup"
-  clawbench run --benchmark exercism --task exercism/two-fer
+  clawbench run --benchmark exercism --task exercism/affine-cipher
+  clawbench run --benchmark pinchbench --label "my-setup"
   clawbench compare results/setup-a.json results/setup-b.json
 `, version)
 }
@@ -167,6 +168,9 @@ func cmdRun(args []string) {
 			taskWorkspaces[t.ID] = exercismBench.WorkspaceDir(name)
 		}
 		fmt.Printf("Loaded %d Exercism Python exercises\n", len(tasks))
+	case "pinchbench":
+		tasks = PinchBenchTasks()
+		fmt.Printf("Loaded %d PinchBench-adapted tasks\n", len(tasks))
 	default:
 		tasks = BuiltinTasks()
 	}
@@ -222,6 +226,37 @@ func cmdRun(args []string) {
 	gwVersion := client.ServerVersion()
 	fmt.Printf("Connected. Gateway version: %s\n", gwVersion)
 	fmt.Printf("Running %d task(s), %d repeat(s) each\n\n", len(tasks), repeatCount)
+
+	// Run sanity gate first if present
+	var sanityIdx = -1
+	for i, t := range tasks {
+		if t.Category == "sanity" {
+			sanityIdx = i
+			break
+		}
+	}
+	if sanityIdx >= 0 {
+		sanityTask := tasks[sanityIdx]
+		fmt.Printf("  Running sanity gate: %s\n", sanityTask.Name)
+		ws := workspacePath
+		if taskWorkspaces != nil {
+			if tw, ok := taskWorkspaces[sanityTask.ID]; ok {
+				ws = tw
+			}
+		}
+		sanityResult := RunTask(ctx, client, sanityTask, ws)
+		if sanityResult.IsError || sanityResult.Correctness == 0 {
+			fmt.Fprintf(os.Stderr, "\nSanity check failed. Aborting benchmark.\n")
+			if sanityResult.IsError {
+				fmt.Fprintf(os.Stderr, "Error: %s\n", sanityResult.ErrorMsg)
+			}
+			fmt.Fprintf(os.Stderr, "Fix the issue and try again.\n")
+			os.Exit(1)
+		}
+		fmt.Printf("  Sanity check passed (%.2fs)\n\n", sanityResult.WallClockSeconds)
+		// Remove sanity task from the list so it doesn't run again
+		tasks = append(tasks[:sanityIdx], tasks[sanityIdx+1:]...)
+	}
 
 	// Run tasks
 	results := RunAll(ctx, client, tasks, repeatCount, workspacePath, taskWorkspaces)

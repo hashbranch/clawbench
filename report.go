@@ -58,6 +58,10 @@ func PrintResults(results BenchmarkResults) {
 	fmt.Println()
 	fmt.Printf("  Avg correctness: %.2f | Avg latency: %.2fs | Total cost: $%.6f\n",
 		results.Summary.AvgCorrectness, results.Summary.AvgLatency, results.Summary.TotalCost)
+	if results.Summary.ScorePerKTokens > 0 {
+		fmt.Printf("  Efficiency: %.4f score/1K tokens | %.2f score/$\n",
+			results.Summary.ScorePerKTokens, results.Summary.ScorePerDollar)
+	}
 	fmt.Println()
 }
 
