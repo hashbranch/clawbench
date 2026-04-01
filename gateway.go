@@ -169,7 +169,6 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 
 	// Create an isolated session for this benchmark task
 	sessionKey := fmt.Sprintf("clawbench-%d", time.Now().UnixNano())
-	idempotencyKey := fmt.Sprintf("idem-%d", time.Now().UnixNano())
 	reqID := c.nextID()
 
 	createFrame := map[string]any{
@@ -177,11 +176,10 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 		"id":     reqID,
 		"method": "sessions.create",
 		"params": map[string]any{
-			"key":            sessionKey,
-			"agentId":        "default",
-			"label":          "ClawBench benchmark",
-			"message":        prompt,
-			"idempotencyKey": idempotencyKey,
+			"key":     sessionKey,
+			"agentId": "default",
+			"label":   "ClawBench benchmark",
+			"message": prompt,
 		},
 	}
 	if err := c.conn.WriteJSON(createFrame); err != nil {
