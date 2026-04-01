@@ -180,7 +180,7 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 		"params": map[string]any{
 			"key":     sessionKey,
 			"agentId": "default",
-			"label":   fmt.Sprintf("ClawBench - %d", c.sessionSeq),
+			"label":   fmt.Sprintf("ClawBench - %d - %d", c.sessionSeq, time.Now().UnixMilli()),
 			"message": prompt,
 		},
 	}
@@ -261,14 +261,28 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 				case "delta":
 					if text, ok := payload["message"].(string); ok {
 						textParts = append(textParts, text)
+					} else if msg, ok := payload["message"].(map[string]any); ok {
+						if t := extractContentText(msg); t != "" {
+							textParts = append(textParts, t)
+						}
 					}
 				case "final":
-					// Final event may or may not have message content.
-					// Always prefer accumulated deltas.
+					// Extract response text. Try multiple formats:
+					// 1. Accumulated deltas (preferred)
+					// 2. message as string
+					// 3. message.content[0].text (structured format)
 					if len(textParts) > 0 {
 						result.Text = strings.Join(textParts, "")
-					} else if text, ok := payload["message"].(string); ok {
+					} else if text, ok := payload["message"].(string); ok && text != "" {
 						result.Text = text
+					} else if msg, ok := payload["message"].(map[string]any); ok {
+						result.Text = extractContentText(msg)
+					}
+					// Also try top-level content array
+					if result.Text == "" {
+						if content, ok := payload["content"].([]any); ok {
+							result.Text = extractFromContentArray(content)
+						}
 					}
 					// Extract token usage
 					if usage, ok := payload["usage"].(map[string]any); ok {
@@ -304,15 +318,28 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 				}
 				stream, _ := payload["stream"].(string)
 				data, _ := payload["data"].(map[string]any)
-				if stream == "tool_use" && data != nil {
+				// Match both "tool_use" and "tool" stream names
+				if (stream == "tool_use" || stream == "tool") && data != nil {
+					// Only capture tool start events, not results
+					phase, _ := data["phase"].(string)
+					if phase == "result" {
+						continue
+					}
 					tc := ToolCall{}
+					// Try both field names: tool_name (protocol spec) and name (actual)
 					if name, ok := data["tool_name"].(string); ok {
+						tc.Name = name
+					} else if name, ok := data["name"].(string); ok {
 						tc.Name = name
 					}
 					if input, ok := data["tool_input"].(map[string]any); ok {
 						tc.Args = input
+					} else if input, ok := data["input"].(map[string]any); ok {
+						tc.Args = input
 					}
-					result.ToolCalls = append(result.ToolCalls, tc)
+					if tc.Name != "" {
+						result.ToolCalls = append(result.ToolCalls, tc)
+					}
 				}
 
 			case "tick", "sessions.changed":
@@ -338,6 +365,32 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 			}
 		}
 	}
+}
+
+// extractContentText pulls text from a structured message object.
+// Handles: {content: [{type: "text", text: "..."}]}
+func extractContentText(msg map[string]any) string {
+	if content, ok := msg["content"].([]any); ok {
+		return extractFromContentArray(content)
+	}
+	if text, ok := msg["text"].(string); ok {
+		return text
+	}
+	return ""
+}
+
+// extractFromContentArray pulls text from a content array.
+// Handles: [{type: "text", text: "..."}, ...]
+func extractFromContentArray(content []any) string {
+	var parts []string
+	for _, item := range content {
+		if block, ok := item.(map[string]any); ok {
+			if t, ok := block["text"].(string); ok {
+				parts = append(parts, t)
+			}
+		}
+	}
+	return strings.Join(parts, "")
 }
 
 // ServerVersion returns the Gateway version obtained during connect.
