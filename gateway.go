@@ -157,8 +157,8 @@ func (c *GatewayClient) Connect(ctx context.Context) error {
 	return nil
 }
 
-// SendPrompt sends a chat message via chat.send and collects the full response.
-// It streams events until a "final" chat event is received.
+// SendPrompt creates an isolated session, sends the prompt, and collects the
+// full response by accumulating delta events until the final signal.
 func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayResponse, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -167,28 +167,33 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 		return GatewayResponse{}, fmt.Errorf("not connected")
 	}
 
-	idempotencyKey := fmt.Sprintf("clawbench-%d", time.Now().UnixNano())
+	// Create an isolated session for this benchmark task
+	sessionKey := fmt.Sprintf("clawbench-%d", time.Now().UnixNano())
+	idempotencyKey := fmt.Sprintf("idem-%d", time.Now().UnixNano())
+	reqID := c.nextID()
 
-	// Send chat.send request
-	reqFrame := map[string]any{
+	createFrame := map[string]any{
 		"type":   "req",
-		"id":     c.nextID(),
-		"method": "chat.send",
+		"id":     reqID,
+		"method": "sessions.create",
 		"params": map[string]any{
-			"sessionKey":     "main",
+			"key":            sessionKey,
+			"agentId":        "default",
+			"label":          "ClawBench benchmark",
 			"message":        prompt,
 			"idempotencyKey": idempotencyKey,
 		},
 	}
-	if err := c.conn.WriteJSON(reqFrame); err != nil {
+	if err := c.conn.WriteJSON(createFrame); err != nil {
 		return GatewayResponse{}, fmt.Errorf("failed to send prompt: %w", err)
 	}
 
-	// Collect streaming events until we get a "final" chat event
+	// Collect events. Track our runId to filter events for this session.
 	var result GatewayResponse
 	result.Raw = make(map[string]any)
 	var textParts []string
 	var allFrames []map[string]any
+	var ourRunID string
 
 	for {
 		select {
@@ -198,7 +203,6 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 		default:
 		}
 
-		// Use a reasonable read deadline to detect hangs
 		c.conn.SetReadDeadline(time.Now().Add(120 * time.Second))
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
@@ -226,22 +230,44 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 		case "event":
 			eventName, _ := frame["event"].(string)
 			payload, _ := frame["payload"].(map[string]any)
+			if payload == nil {
+				continue
+			}
+
+			// Filter events by session key or runId
+			evtSession, _ := payload["sessionKey"].(string)
+			evtRunID, _ := payload["runId"].(string)
 
 			switch eventName {
 			case "chat":
+				// Only process events for our session
+				if evtSession != "" && evtSession != sessionKey {
+					continue
+				}
+
+				// Track our runId from the first chat event
+				if ourRunID == "" && evtRunID != "" {
+					ourRunID = evtRunID
+				}
+				if ourRunID != "" && evtRunID != "" && evtRunID != ourRunID {
+					continue // different run, skip
+				}
+
 				state, _ := payload["state"].(string)
 				switch state {
 				case "delta":
-					if msg, ok := payload["message"].(string); ok {
-						textParts = append(textParts, msg)
+					if text, ok := payload["message"].(string); ok {
+						textParts = append(textParts, text)
 					}
 				case "final":
-					if msg, ok := payload["message"].(string); ok {
-						result.Text = msg
-					} else {
+					// Final event may or may not have message content.
+					// Always prefer accumulated deltas.
+					if len(textParts) > 0 {
 						result.Text = strings.Join(textParts, "")
+					} else if text, ok := payload["message"].(string); ok {
+						result.Text = text
 					}
-					// Extract token usage from final event
+					// Extract token usage
 					if usage, ok := payload["usage"].(map[string]any); ok {
 						if v, ok := usage["inputTokens"].(float64); ok {
 							result.Tokens.Input = int(v)
@@ -253,6 +279,9 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 							result.Tokens.Total = int(v)
 						}
 						result.Tokens.Available = true
+					}
+					if model, ok := payload["model"].(string); ok {
+						result.Model = model
 					}
 					result.Raw["frames"] = allFrames
 					return result, nil
@@ -266,36 +295,44 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 				}
 
 			case "agent":
-				// Tool lifecycle events (only received because we set caps: ["tool-events"])
-				if payload != nil {
-					stream, _ := payload["stream"].(string)
-					data, _ := payload["data"].(map[string]any)
-					if stream == "tool_use" && data != nil {
-						tc := ToolCall{}
-						if name, ok := data["tool_name"].(string); ok {
-							tc.Name = name
-						}
-						if input, ok := data["tool_input"].(map[string]any); ok {
-							tc.Args = input
-						}
-						result.ToolCalls = append(result.ToolCalls, tc)
+				// Tool lifecycle events for our run
+				if ourRunID != "" && evtRunID != ourRunID {
+					continue
+				}
+				stream, _ := payload["stream"].(string)
+				data, _ := payload["data"].(map[string]any)
+				if stream == "tool_use" && data != nil {
+					tc := ToolCall{}
+					if name, ok := data["tool_name"].(string); ok {
+						tc.Name = name
 					}
+					if input, ok := data["tool_input"].(map[string]any); ok {
+						tc.Args = input
+					}
+					result.ToolCalls = append(result.ToolCalls, tc)
 				}
 
-			case "tick":
-				// Heartbeat, ignore
+			case "tick", "sessions.changed":
+				// Ignore housekeeping events
 			}
 
 		case "res":
-			// Response to our chat.send request (acknowledgment, not the actual chat response)
+			// Response to sessions.create — extract runId if available
+			if payload, ok := frame["payload"].(map[string]any); ok {
+				if runStarted, ok := payload["runStarted"].(bool); ok && runStarted {
+					if c.debug {
+						fmt.Println("  [DEBUG] session created, run started")
+					}
+				}
+			}
+			// Check for errors
 			if ok, exists := frame["ok"]; exists {
 				if okBool, isBool := ok.(bool); isBool && !okBool {
 					errObj, _ := frame["error"].(map[string]any)
 					errMsg, _ := errObj["message"].(string)
-					return result, fmt.Errorf("chat.send rejected: %s", errMsg)
+					return result, fmt.Errorf("sessions.create rejected: %s", errMsg)
 				}
 			}
-			// The actual response comes via chat events, so continue listening
 		}
 	}
 }
