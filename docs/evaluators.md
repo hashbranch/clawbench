@@ -56,7 +56,7 @@ Built-in evaluator for the instruction_following task. Checks structured output 
 
 - Checks: exactly 3 bullet points (0.5 if correct count)
 - Checks: each bullet under 20 words, excluding the bullet prefix marker (0.5 if all pass)
-- Recognizes bullet markers: `-`, `*`, `•` (Unicode bullet), `1.`–`5.`, `1)`–`5)`
+- Recognizes bullet markers: `-`, `*`, `•` (Unicode bullet), `1.`–`5.`, `1)`–`5)` (numbered lists above 5 are not currently matched)
 - Empty lines between bullets are ignored (handles double-newline separated formats)
 
 ## Composite Scores
