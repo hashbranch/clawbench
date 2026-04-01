@@ -6,8 +6,11 @@ ClawBench connects to your running OpenClaw Gateway, runs standardized benchmark
 
 ## Install
 
+Download the latest binary from [GitHub Releases](https://github.com/hashbranch/clawbench/releases):
+
 ```bash
-go install github.com/hashbranch/clawbench@latest
+curl -sL https://github.com/hashbranch/clawbench/releases/latest/download/clawbench-darwin-arm64 -o clawbench
+chmod +x clawbench
 ```
 
 Or build from source:
@@ -18,96 +21,86 @@ cd clawbench
 go build -o clawbench .
 ```
 
-## Quick Start
-
-ClawBench needs a running OpenClaw Gateway. It creates isolated sessions per task, so it won't interfere with your active agent conversations.
-
-**Using the CLI backend (default, recommended):**
-
-```bash
-# Requires openclaw CLI on PATH and Gateway running
-clawbench run --label "my-setup"
-```
-
-**Using the WebSocket backend (direct connection):**
-
-```bash
-clawbench run --mode websocket --token "$OPENCLAW_AUTH_TOKEN" --label "my-setup"
-```
-
-### Device Identity
-
-ClawBench auto-detects your device identity from `~/.openclaw/identity/device.json` for scope binding when using WebSocket mode. This is the same Ed25519 key pair used by the OpenClaw CLI. Without it, the Gateway may reject scope requests or limit access.
-
-The CLI backend bypasses this since the `openclaw` CLI handles its own auth.
-
 ## Usage
 
 ```bash
-# List available benchmark tasks
-clawbench list
+# Run builtin benchmark tasks
+clawbench run --mode websocket --token "your-token" --label "my-setup"
 
-# Run all benchmarks against your local Gateway
-clawbench run --label "my-setup-v2"
+# Run PinchBench-adapted tasks (real-world agent scenarios)
+clawbench run --benchmark pinchbench --mode websocket --token "your-token" --label "my-setup"
 
-# Run a specific task with 3 repeats for statistical rigor
-clawbench run --task skill_tool_chain --repeat 3
+# Run Exercism coding benchmark (34 Python exercises)
+clawbench run --benchmark exercism --mode websocket --token "your-token" --label "my-setup"
+
+# Run a specific task
+clawbench run --benchmark pinchbench --task pinch/weather_script
 
 # Compare two result files
 clawbench compare results/setup-a.json results/setup-b.json
+
+# List available tasks
+clawbench list
 ```
 
 ### Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--mode` | `cli` | Backend mode: `cli` (openclaw CLI) or `websocket` (direct WS) |
-| `--gateway` | `ws://127.0.0.1:18789` | Gateway WebSocket URL (websocket mode only) |
-| `--token` | `$OPENCLAW_AUTH_TOKEN` | Auth token (websocket mode only) |
+| `--mode` | `cli` | Backend: `websocket` (recommended) or `cli` |
+| `--benchmark` | builtin | Suite: `builtin`, `pinchbench`, or `exercism` |
+| `--gateway` | `ws://127.0.0.1:18789` | Gateway WebSocket URL |
+| `--token` | `$OPENCLAW_AUTH_TOKEN` | Auth token |
 | `--label` | timestamp | Label for this run |
-| `--hf-token` | `$HF_TOKEN` | HuggingFace token for official GAIA questions |
-| `--gaia-only` | false | Run only official GAIA tasks (requires `--hf-token`) |
 | `--task` | all | Run specific task only |
 | `--repeat` | 1 | Repeat each task N times |
-| `--workspace` | | Path to OpenClaw workspace (for file checks) |
+| `--workspace` | | OpenClaw workspace path (for file checks) |
 | `--output` | `results/<label>.json` | Output file path |
+| `--debug` | false | Dump raw WebSocket frames |
 
-## Benchmark Tasks
+## Benchmark Suites
 
-**Skill Discovery + Tool Chaining** (`skill_tool_chain`) — Prompts the agent to look up weather and write a haiku to a file. Exercises tool discovery (`exec` for weather fetching), tool chaining (`write` for file creation), and output generation (`file_exists` check). 90s budget.
+### Builtin (2 tasks)
 
-**Instruction Following** (`instruction_following`) — Tests structured output adherence: exactly 3 bullet points, each under 20 words. Exercises whether SOUL.md and AGENTS.md configuration affects format compliance. 60s budget.
+Quick smoke test for your setup.
 
-### ClawBench Original Tasks
+- **Skill Discovery + Tool Chaining** -- Can your agent find and chain tools (weather + file write)?
+- **Instruction Following** -- Does your SOUL.md affect how well the agent follows structured instructions?
 
-15 reasoning and knowledge tasks (`cb_reasoning_001` through `cb_reasoning_015`) authored by ClawBench. These follow the GAIA benchmark style (short factual answers, exact match) but are NOT from the official dataset. They serve as a baseline that runs without any external dependencies.
+### PinchBench (8 tasks)
 
-### Official GAIA Level 1 Tasks (Runtime Fetch)
+Real-world agent tasks adapted from [PinchBench](https://github.com/pinchbench/skill). Covers coding, file operations, comprehension, multi-step workflows, and organization.
 
-When you provide a HuggingFace token, ClawBench fetches real [GAIA benchmark](https://arxiv.org/abs/2311.12983) Level 1 validation questions at runtime. The GAIA dataset is gated — questions can't be redistributed, so they're downloaded fresh each run.
+- **Sanity Check** -- fail-fast gate, aborts if the agent can't respond
+- **Weather Script** -- create a working Python script using an API
+- **File Structure** -- create a project scaffold (src/, README, .gitignore)
+- **Search and Replace** -- find and replace across config files
+- **Multi-step Workflow** -- read config, write code, write docs
+- **Memory Retrieval** -- read a file, extract a fact, save the answer
+- **Email Triage** -- categorize and prioritize 10 emails
+- **Blog Post** -- write a structured 500-word blog post
 
-```bash
-# Include official GAIA alongside built-in tasks
-clawbench run --hf-token "$HF_TOKEN" --label "full-bench"
+PinchBench originally benchmarks models (holding config constant). ClawBench adapts these tasks to benchmark configurations (holding model constant).
 
-# Run ONLY official GAIA tasks
-clawbench run --hf-token "$HF_TOKEN" --gaia-only --label "gaia-bench"
-```
+### GAIA-Style Reasoning (15 tasks)
 
-Questions requiring file attachments or multimedia (images, video, audio) are automatically filtered out — only text-based questions are used.
+15 reasoning and knowledge tasks following the [GAIA benchmark](https://arxiv.org/abs/2311.12983) philosophy: short unambiguous answers, real-world knowledge, multi-step reasoning. Scored with the `gaia_exact` evaluator implementing official GAIA scoring (normalized exact string matching, numeric comparison, list comparison). Included in the default task set.
 
-Each task uses the `gaia_exact` evaluator, which implements GAIA's official scoring: normalized exact string matching with whitespace/punctuation removal, numeric comparison, and list comparison. 120s budget per task.
+Optional: provide a HuggingFace token to also fetch real GAIA Level 1 questions from the gated dataset. See [docs/gaia.md](docs/gaia.md) for published baselines (Claude Sonnet 4.5 achieves 82% on Level 1).
 
-**Published GAIA baselines** (full 165-question validation set): Claude Sonnet 4.5 achieves 74.55% overall (82% on Level 1). See [docs/gaia.md](docs/gaia.md) for details and leaderboard comparison.
+### Exercism (34 tasks)
+
+Python coding exercises from the [Aider Polyglot Benchmark](https://github.com/Aider-AI/polyglot-benchmark). Auto-downloaded on first run. Each exercise has a stub file and a unittest test suite. Scores are comparable to published numbers on the [Aider Leaderboard](https://aider.chat/docs/leaderboards/).
 
 ## Metrics
 
 Each task is scored on independent metrics (not composited into a single score):
 
-- **Correctness** — Did the agent produce the right answer?
-- **Tool Accuracy** — Did it use the right tools/skills?
-- **Latency** — How fast from prompt to response?
-- **Cost** — Token cost (real if available, estimated from response char length otherwise)
+- **Correctness** -- Did the agent produce the right answer?
+- **Tool Accuracy** -- Did it use the right tools/skills?
+- **Latency** -- Wall-clock time from prompt to response
+- **Cost** -- Token cost (real from Gateway, or estimated)
+- **Efficiency** -- Score per 1K tokens, score per dollar
 
 ## How Comparison Works
 
@@ -116,15 +109,15 @@ Each task is scored on independent metrics (not composited into a single score):
 3. Share the JSON result files
 4. `clawbench compare` shows a side-by-side table with deltas
 
-Results capture config metadata (model, Gateway version, gateway URL) so you know what you're comparing.
+Results capture config metadata (model, temperature, Gateway version) so you know what you're comparing.
 
-## Session Isolation
+## Acknowledgments
 
-Each benchmark task runs in its own isolated session via `sessions.create`. This means:
-
-- Benchmark runs don't pollute your active agent conversations
-- Each task gets a clean context (no bleed between tasks)
-- Sessions are labeled `ClawBench - <seq> - <timestamp>` for easy identification
+- [PinchBench](https://github.com/pinchbench/skill) -- Task designs and real-world agent scenarios adapted for configuration benchmarking. Original project benchmarks LLM models in OpenClaw.
+- [Aider Polyglot Benchmark](https://github.com/Aider-AI/polyglot-benchmark) -- Exercism Python exercises used for the coding benchmark suite.
+- [Karpathy's AutoResearch](https://github.com/karpathy/autoresearch) -- Inspiration for fixed time budgets and immutable evaluation harness design.
+- [Meta-Harness](https://arxiv.org/html/2603.28052v1) -- Inspiration for full execution trace capture over scalar scores.
+- [OpenClaw](https://github.com/openclaw/openclaw) -- The agent platform this tool benchmarks.
 
 ## License
 

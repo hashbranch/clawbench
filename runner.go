@@ -148,16 +148,30 @@ func AggregateResults(results []RunResult) Summary {
 		repeatCount = len(results) / taskCount
 	}
 
+	totalTokens := 0
+	for _, r := range results {
+		totalTokens += r.TotalTokens
+	}
+
 	summary := Summary{
 		TotalTasks:  taskCount,
 		TotalRuns:   len(results),
 		RepeatCount: repeatCount,
 		TotalCost:   totalCost,
+		TotalTokens: totalTokens,
 	}
 
 	if taskCount > 0 {
 		summary.AvgCorrectness = totalCorrectness / float64(taskCount)
 		summary.AvgLatency = totalLatency / float64(taskCount)
+	}
+
+	// Efficiency metrics
+	if totalTokens > 0 {
+		summary.ScorePerKTokens = summary.AvgCorrectness / (float64(totalTokens) / 1000.0)
+	}
+	if totalCost > 0 {
+		summary.ScorePerDollar = summary.AvgCorrectness / totalCost
 	}
 
 	return summary
