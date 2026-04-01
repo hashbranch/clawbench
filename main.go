@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const version = "0.3.5"
+const version = "0.3.6"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -65,6 +65,7 @@ Examples:
 func cmdRun(args []string) {
 	// Parse flags
 	mode := "cli" // default to CLI backend
+	debug := false
 	gatewayURL := "ws://127.0.0.1:18789"
 	authToken := os.Getenv("OPENCLAW_AUTH_TOKEN")
 	label := time.Now().Format("20060102-150405")
@@ -115,6 +116,8 @@ func cmdRun(args []string) {
 			if i < len(args) {
 				outputPath = args[i]
 			}
+		case "--debug":
+			debug = true
 		default:
 			fmt.Fprintf(os.Stderr, "unknown flag: %s\n", args[i])
 			os.Exit(1)
@@ -156,7 +159,9 @@ func cmdRun(args []string) {
 		client = NewCLIBackend()
 	case "websocket":
 		fmt.Printf("Connecting to Gateway at %s...\n", gatewayURL)
-		client = NewGatewayClient(gatewayURL, authToken)
+		gwClient := NewGatewayClient(gatewayURL, authToken)
+		gwClient.debug = debug
+		client = gwClient
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown mode: %s (use 'cli' or 'websocket')\n", mode)
 		os.Exit(1)

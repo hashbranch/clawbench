@@ -22,6 +22,7 @@ type GatewayClient struct {
 	mu        sync.Mutex
 	reqID     int
 	serverVer string
+	debug     bool
 }
 
 // NewGatewayClient creates a client for the given Gateway URL.
@@ -213,6 +214,11 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 			continue
 		}
 		allFrames = append(allFrames, frame)
+
+		if c.debug {
+			raw, _ := json.Marshal(frame)
+			fmt.Printf("  [DEBUG] frame: %s\n", string(raw))
+		}
 
 		frameType, _ := frame["type"].(string)
 
