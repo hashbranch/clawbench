@@ -203,7 +203,12 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 		default:
 		}
 
-		c.conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+		// Set read deadline to whichever is sooner: 120s or context deadline
+		readDeadline := time.Now().Add(120 * time.Second)
+		if dl, ok := ctx.Deadline(); ok && dl.Before(readDeadline) {
+			readDeadline = dl
+		}
+		c.conn.SetReadDeadline(readDeadline)
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
 			if len(textParts) > 0 {
