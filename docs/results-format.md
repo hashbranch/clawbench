@@ -4,7 +4,7 @@ Each `clawbench run` produces a JSON file with this structure:
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "0.5.0",
   "timestamp": "2026-03-31T14:30:00Z",
   "label": "my-setup-v2",
   "config": {
@@ -12,7 +12,7 @@ Each `clawbench run` produces a JSON file with this structure:
     "model": "anthropic/claude-sonnet-4-6",
     "temperature": 0.7,
     "gateway_url": "ws://127.0.0.1:18789",
-    "gateway_version": "2.4.1",
+    "gateway_version": "2026.3.28",
     "workspace_hash": ""
   },
   "results": [
@@ -26,7 +26,7 @@ Each `clawbench run` produces a JSON file with this structure:
       "total_tokens": 620,
       "cost_usd": 0.003,
       "num_tool_calls": 2,
-      "tools_used": ["weather", "file_write"],
+      "tools_used": ["exec", "write"],
       "config": {
         "model": "anthropic/claude-sonnet-4-6",
         "temperature": 0.7
@@ -37,10 +37,24 @@ Each `clawbench run` produces a JSON file with this structure:
           "score": 1.0,
           "weight": 1.0,
           "passed": true,
-          "details": "tool \"weather\" invoked (from trace)"
+          "details": "tool \"exec\" invoked (from trace)"
+        },
+        {
+          "type": "tool_invoked",
+          "score": 1.0,
+          "weight": 1.0,
+          "passed": true,
+          "details": "tool \"write\" invoked (from trace)"
+        },
+        {
+          "type": "file_exists",
+          "score": 1.0,
+          "weight": 1.0,
+          "passed": true,
+          "details": "file \"weather_haiku.txt\" exists at /path/to/workspace/weather_haiku.txt"
         }
       ],
-      "raw_response": "The weather in San Francisco is...",
+      "raw_response": "I looked up the weather in San Francisco...",
       "is_error": false
     }
   ],
@@ -65,7 +79,7 @@ The `config` object captures what was being benchmarked. Without this, comparing
 | `model` | Gateway response | Model that served the responses |
 | `temperature` | Gateway response | Sampling temperature (0 if not reported) |
 | `gateway_url` | `--gateway` flag | Gateway WebSocket URL |
-| `gateway_version` | Connect handshake | OpenClaw version |
+| `gateway_version` | Connect handshake | OpenClaw version (e.g. `2026.3.28`) |
 | `workspace_hash` | (future) | Hash of SOUL.md + AGENTS.md + skills |
 
 ## Repeated Runs
