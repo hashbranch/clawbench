@@ -16,13 +16,14 @@ const protocolVersion = 3
 
 // GatewayClient connects to an OpenClaw Gateway via WebSocket.
 type GatewayClient struct {
-	url       string
-	authToken string
-	conn      *websocket.Conn
-	mu        sync.Mutex
-	reqID     int
-	serverVer string
-	debug     bool
+	url        string
+	authToken  string
+	conn       *websocket.Conn
+	mu         sync.Mutex
+	reqID      int
+	sessionSeq int
+	serverVer  string
+	debug      bool
 }
 
 // NewGatewayClient creates a client for the given Gateway URL.
@@ -168,7 +169,8 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 	}
 
 	// Create an isolated session for this benchmark task
-	sessionKey := fmt.Sprintf("clawbench-%d", time.Now().UnixNano())
+	c.sessionSeq++
+	sessionKey := fmt.Sprintf("clawbench-%d-%d", time.Now().UnixNano(), c.sessionSeq)
 	reqID := c.nextID()
 
 	createFrame := map[string]any{
@@ -178,7 +180,7 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 		"params": map[string]any{
 			"key":     sessionKey,
 			"agentId": "default",
-			"label":   "ClawBench benchmark",
+			"label":   fmt.Sprintf("ClawBench - %d", c.sessionSeq),
 			"message": prompt,
 		},
 	}
@@ -238,17 +240,20 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 
 			switch eventName {
 			case "chat":
-				// Only process events for our session
-				if evtSession != "" && evtSession != sessionKey {
+				// Filter: match our session (Gateway may prefix with agent ID)
+				if evtSession != "" && !strings.Contains(evtSession, sessionKey) {
 					continue
 				}
 
-				// Track our runId from the first chat event
+				// Track our runId from the first matching chat event
 				if ourRunID == "" && evtRunID != "" {
 					ourRunID = evtRunID
+					if c.debug {
+						fmt.Printf("  [DEBUG] tracking runId: %s\n", ourRunID)
+					}
 				}
 				if ourRunID != "" && evtRunID != "" && evtRunID != ourRunID {
-					continue // different run, skip
+					continue
 				}
 
 				state, _ := payload["state"].(string)
@@ -293,8 +298,8 @@ func (c *GatewayClient) SendPrompt(ctx context.Context, prompt string) (GatewayR
 				}
 
 			case "agent":
-				// Tool lifecycle events for our run
-				if ourRunID != "" && evtRunID != ourRunID {
+				// Tool lifecycle events — filter to our run
+				if ourRunID != "" && evtRunID != "" && evtRunID != ourRunID {
 					continue
 				}
 				stream, _ := payload["stream"].(string)
