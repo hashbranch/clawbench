@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const version = "0.6.0"
+const version = "0.8.1"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -52,7 +52,7 @@ Run flags:
   --gateway URL     Gateway WebSocket URL (default: ws://127.0.0.1:18789, websocket mode only)
   --token TOKEN     Auth token (websocket mode only, or set OPENCLAW_AUTH_TOKEN)
   --label NAME      Label for this benchmark run (default: timestamp)
-  --benchmark NAME  Benchmark suite: "builtin" (default) or "exercism"
+  --benchmark NAME  Benchmark suite: "builtin" (default), "exercism", or "pinchbench"
   --hf-token TOKEN  HuggingFace token to fetch official GAIA questions (or set HF_TOKEN)
   --gaia-only       Run only official GAIA tasks (requires --hf-token)
   --task ID         Run a specific task only (default: all)
@@ -179,6 +179,9 @@ func cmdRun(args []string) {
 			taskWorkspaces[t.ID] = exercismBench.WorkspaceDir(name)
 		}
 		fmt.Printf("Loaded %d Exercism Python exercises\n", len(tasks))
+	case "pinchbench":
+		tasks = PinchBenchTasks()
+		fmt.Printf("Loaded %d PinchBench-adapted tasks\n", len(tasks))
 	default:
 		if gaiaOnly {
 			// --gaia-only: only run official GAIA tasks, skip built-ins
