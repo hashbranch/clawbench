@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
-const version = "0.5.0"
+const version = "0.6.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -50,6 +52,7 @@ Run flags:
   --gateway URL     Gateway WebSocket URL (default: ws://127.0.0.1:18789, websocket mode only)
   --token TOKEN     Auth token (websocket mode only, or set OPENCLAW_AUTH_TOKEN)
   --label NAME      Label for this benchmark run (default: timestamp)
+  --benchmark NAME  Benchmark suite: "builtin" (default) or "exercism"
   --task ID         Run a specific task only (default: all)
   --repeat N        Repeat each task N times (default: 1)
   --workspace PATH  Path to OpenClaw workspace (for file_exists checks)
@@ -57,7 +60,8 @@ Run flags:
 
 Examples:
   clawbench run --label "my-setup-v2"
-  clawbench run --task skill_tool_chain --repeat 3
+  clawbench run --benchmark exercism --label "my-setup"
+  clawbench run --benchmark exercism --task exercism/two-fer
   clawbench compare results/setup-a.json results/setup-b.json
 `, version)
 }
@@ -66,6 +70,7 @@ func cmdRun(args []string) {
 	// Parse flags
 	mode := "cli" // default to CLI backend
 	debug := false
+	benchmark := "" // "", "builtin", "exercism"
 	gatewayURL := "ws://127.0.0.1:18789"
 	authToken := os.Getenv("OPENCLAW_AUTH_TOKEN")
 	label := time.Now().Format("20060102-150405")
@@ -118,6 +123,11 @@ func cmdRun(args []string) {
 			}
 		case "--debug":
 			debug = true
+		case "--benchmark":
+			i++
+			if i < len(args) {
+				benchmark = args[i]
+			}
 		default:
 			fmt.Fprintf(os.Stderr, "unknown flag: %s\n", args[i])
 			os.Exit(1)
@@ -129,15 +139,51 @@ func cmdRun(args []string) {
 		outputPath = fmt.Sprintf("results/%s.json", label)
 	}
 
-	// Select tasks
-	tasks := BuiltinTasks()
+	// Select tasks based on benchmark suite
+	var tasks []Task
+	var exercismBench *ExercismBenchmark
+	var taskWorkspaces map[string]string // taskID -> workspace path for exercism
+
+	switch benchmark {
+	case "exercism":
+		home, _ := os.UserHomeDir()
+		cacheDir := filepath.Join(home, ".clawbench", "exercism")
+		os.MkdirAll(cacheDir, 0755)
+		exercismBench = NewExercismBenchmark(cacheDir)
+		if err := exercismBench.EnsureDownloaded(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			os.Exit(1)
+		}
+		var err error
+		tasks, err = exercismBench.GenerateAllTasks()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading exercism tasks: %s\n", err)
+			os.Exit(1)
+		}
+		// Build workspace map — each exercise runs in its own directory
+		taskWorkspaces = make(map[string]string)
+		for _, t := range tasks {
+			name := strings.TrimPrefix(t.ID, "exercism/")
+			taskWorkspaces[t.ID] = exercismBench.WorkspaceDir(name)
+		}
+		fmt.Printf("Loaded %d Exercism Python exercises\n", len(tasks))
+	default:
+		tasks = BuiltinTasks()
+	}
+
 	if taskID != "" {
-		t := FindTask(taskID)
-		if t == nil {
+		var filtered []Task
+		for _, t := range tasks {
+			if t.ID == taskID {
+				filtered = append(filtered, t)
+				break
+			}
+		}
+		if len(filtered) == 0 {
 			fmt.Fprintf(os.Stderr, "unknown task: %s\nRun 'clawbench list' to see available tasks.\n", taskID)
 			os.Exit(1)
 		}
-		tasks = []Task{*t}
+		tasks = filtered
 	}
 
 	// Set up context with interrupt handling
@@ -178,7 +224,7 @@ func cmdRun(args []string) {
 	fmt.Printf("Running %d task(s), %d repeat(s) each\n\n", len(tasks), repeatCount)
 
 	// Run tasks
-	results := RunAll(ctx, client, tasks, repeatCount, workspacePath)
+	results := RunAll(ctx, client, tasks, repeatCount, workspacePath, taskWorkspaces)
 
 	// Build config metadata from first successful result
 	config := ConfigMeta{

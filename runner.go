@@ -76,20 +76,30 @@ func RunTask(ctx context.Context, client Backend, task Task, workspacePath strin
 
 // RunAll executes all tasks, optionally repeating each N times.
 // Returns all individual run results.
-func RunAll(ctx context.Context, client Backend, tasks []Task, repeatCount int, workspacePath string) []RunResult {
+// RunAll executes all tasks. taskWorkspaces maps taskID -> workspace path for
+// benchmarks that need per-task workspaces (e.g., exercism). Falls back to
+// defaultWorkspace if no per-task workspace is set.
+func RunAll(ctx context.Context, client Backend, tasks []Task, repeatCount int, defaultWorkspace string, taskWorkspaces map[string]string) []RunResult {
 	if repeatCount < 1 {
 		repeatCount = 1
 	}
 
 	var allResults []RunResult
 
-	for _, task := range tasks {
-		fmt.Printf("  Running: %s", task.Name)
-		for i := 0; i < repeatCount; i++ {
-			if repeatCount > 1 {
-				fmt.Printf(" [%d/%d]", i+1, repeatCount)
+	for i, task := range tasks {
+		ws := defaultWorkspace
+		if taskWorkspaces != nil {
+			if tw, ok := taskWorkspaces[task.ID]; ok {
+				ws = tw
 			}
-			result := RunTask(ctx, client, task, workspacePath)
+		}
+
+		fmt.Printf("  [%d/%d] %s", i+1, len(tasks), task.Name)
+		for j := 0; j < repeatCount; j++ {
+			if repeatCount > 1 {
+				fmt.Printf(" [%d/%d]", j+1, repeatCount)
+			}
+			result := RunTask(ctx, client, task, ws)
 			allResults = append(allResults, result)
 
 			if result.IsError {

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 )
@@ -32,6 +33,8 @@ func runEvaluator(ec EvalConfig, resp GatewayResponse, wallClock float64, worksp
 		return evalLatency(ec, wallClock)
 	case "format_bullets":
 		return evalFormatBullets(ec, resp.Text)
+	case "exec_check":
+		return evalExecCheck(ec, workspacePath)
 	default:
 		return EvalResult{
 			Type:    ec.Type,
@@ -291,9 +294,52 @@ func evalFormatBullets(ec EvalConfig, text string) EvalResult {
 	}
 }
 
+// evalExecCheck runs a shell command in the workspace and scores based on exit code.
+// This unlocks SWE-bench, Exercism, and any test-suite-based benchmark.
+func evalExecCheck(ec EvalConfig, workspacePath string) EvalResult {
+	if workspacePath == "" {
+		return EvalResult{
+			Type:    "exec_check",
+			Score:   0,
+			Weight:  ec.Weight,
+			Passed:  false,
+			Details: "no workspace path specified",
+		}
+	}
+
+	// ec.Path contains the command to run (e.g., "python -m pytest two_fer_test.py")
+	cmd := exec.Command("bash", "-c", ec.Path)
+	cmd.Dir = workspacePath
+	output, err := cmd.CombinedOutput()
+
+	if err == nil {
+		return EvalResult{
+			Type:    "exec_check",
+			Score:   1.0,
+			Weight:  ec.Weight,
+			Passed:  true,
+			Details: fmt.Sprintf("command passed: %s", ec.Path),
+		}
+	}
+
+	// Truncate output for details
+	outStr := string(output)
+	if len(outStr) > 500 {
+		outStr = outStr[:500] + "..."
+	}
+
+	return EvalResult{
+		Type:    "exec_check",
+		Score:   0,
+		Weight:  ec.Weight,
+		Passed:  false,
+		Details: fmt.Sprintf("command failed: %s\n%s", ec.Path, outStr),
+	}
+}
+
 // ComputeCorrectness aggregates correctness-related evaluator scores.
 func ComputeCorrectness(results []EvalResult) float64 {
-	return weightedAverage(results, "exact_match", "format_bullets")
+	return weightedAverage(results, "exact_match", "format_bullets", "exec_check")
 }
 
 // ComputeToolAccuracy aggregates tool-related evaluator scores.
