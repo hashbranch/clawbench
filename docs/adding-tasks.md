@@ -63,23 +63,4 @@ go build -o clawbench .
 - **Fixed time budgets.** Set `TimeBudget` to something reasonable for the task. This normalizes comparison.
 - **Deterministic evaluation where possible.** Regex patterns and file checks are deterministic. Use `--repeat N` for tasks where LLM nondeterminism matters.
 
-## Future: YAML task loading
 
-When the community needs user-contributed tasks without recompilation, YAML loading will be added. The task struct maps directly to YAML:
-
-```yaml
-id: my_new_task
-name: "My New Task"
-category: tool_use
-tags: [tag1, tag2]
-prompt: |
-  The prompt text.
-time_budget_seconds: 90
-evaluators:
-  - type: exact_match
-    patterns: ["expected_pattern"]
-    weight: 1.0
-  - type: tool_invoked
-    tool_name: "exec"
-    weight: 1.0
-```

@@ -74,7 +74,7 @@ Both implement the `Backend` interface: `Connect()`, `SendPrompt()`, `ServerVers
 
 ## Key Design Decisions
 
-1. **Single binary, no config files.** Tasks are embedded as Go structs. No YAML to discover, parse, or validate. Add YAML support later when community needs it.
+1. **Single binary, no config files.** Tasks are embedded as Go structs. No external config to discover, parse, or validate.
 
 2. **Connect to existing Gateway.** No process lifecycle management. Users already have OpenClaw running. ClawBench just connects and benchmarks.
 
