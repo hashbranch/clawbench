@@ -12,28 +12,58 @@ Key characteristics:
 
 The original dataset is available at [huggingface.co/datasets/gaia-benchmark/GAIA](https://huggingface.co/datasets/gaia-benchmark/GAIA) (gated, requires access request).
 
-## ClawBench GAIA Tasks
+## Two Task Sources
 
-ClawBench includes **15 GAIA-style Level 1 tasks** (`gaia_l1_001` through `gaia_l1_015`) that follow GAIA's philosophy:
+### ClawBench Originals (always available)
 
-- Questions have a single, unambiguous answer
-- Answers are short (a number, a word, or a brief phrase)
-- Questions test reasoning, calculation, factual lookup, and multi-step logic
-- No attached files required (text-only questions)
+15 reasoning/knowledge tasks (`cb_reasoning_001` through `cb_reasoning_015`) that follow the GAIA style — short factual answers, exact-match scoring. These are authored by ClawBench and don't require any external access. They serve as a baseline for how your OpenClaw setup handles this class of problem.
 
-### Question Categories
+### Official GAIA Questions (runtime fetch)
 
-| Tag | Description | Example |
-|-----|-------------|---------|
-| `math` | Arithmetic, conversion, calculation | Sum of primes, unit conversion |
-| `factual` | Knowledge lookup | Chemical elements, historical dates |
-| `web_search` | May require web search | Wikipedia facts, geographic knowledge |
-| `reasoning` | Logic and deduction | Date calculation, Roman numerals |
-| `coding` | String/number manipulation | Vowel counting, base conversion |
-| `multi_step` | Multiple operations needed | Tax calculation |
-| `conversion` | Unit or base conversion | Cups to liters, hex to decimal |
+Real GAIA Level 1 validation questions fetched from HuggingFace at runtime. The dataset is **gated** — ClawBench cannot redistribute the questions, so they must be downloaded each time you run.
 
-### Scoring: `gaia_exact` Evaluator
+**Why runtime fetch?** The GAIA dataset license prohibits redistribution. By fetching at runtime with the user's own token, we comply with the license while still enabling standardized benchmarking against the official questions.
+
+## Getting Access
+
+1. Create a [HuggingFace account](https://huggingface.co/join)
+2. Request access at [huggingface.co/datasets/gaia-benchmark/GAIA](https://huggingface.co/datasets/gaia-benchmark/GAIA) (approval is typically fast)
+3. Create an access token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) (read access is sufficient)
+
+## Running GAIA Tasks
+
+```bash
+# Set token via env var (recommended)
+export HF_TOKEN="hf_xxxxxxxxxxxxxxxxxxxx"
+
+# Run all tasks including official GAIA
+clawbench run --label "full-bench"
+
+# Or pass token as flag
+clawbench run --hf-token "$HF_TOKEN" --label "full-bench"
+
+# Run ONLY official GAIA tasks (no built-in tasks)
+clawbench run --hf-token "$HF_TOKEN" --gaia-only --label "gaia-only"
+
+# Run a specific GAIA task
+clawbench run --hf-token "$HF_TOKEN" --task gaia_l1_real_005
+
+# Without a token, only built-in tasks run (ClawBench originals)
+clawbench run --label "builtin-only"
+```
+
+## Question Filtering
+
+Not all GAIA questions are suitable for text-based agent benchmarking. ClawBench automatically filters out questions that:
+
+- **Require file attachments** (`file_name` field is non-empty)
+- **Reference multimedia** (YouTube, video, audio, image, photo, screenshot, recording)
+- **Reference specific file formats** (PDF, spreadsheet, Excel, .xlsx, .csv, .zip)
+- **Have empty answers** (data quality issue)
+
+This typically yields ~35-45 usable questions from the Level 1 validation split (out of ~53 total).
+
+## Scoring: `gaia_exact` Evaluator
 
 ClawBench implements a `gaia_exact` evaluator that mirrors the official GAIA scoring function:
 
@@ -54,31 +84,7 @@ The [HAL GAIA Leaderboard](https://hal.cs.princeton.edu/gaia) evaluates on the f
 | HAL Generalist | o4-mini Low | 58.18% | 71.70% | 51.16% | 53.85% |
 | HF Open Deep Research | GPT-5 Medium | 62.80% | 73.58% | 62.79% | 38.46% |
 
-**Note:** ClawBench's GAIA tasks are a curated subset of GAIA-style questions, not the full validation set. Scores are not directly comparable to leaderboard numbers but serve as a directional signal for how well your OpenClaw setup handles this class of problem.
-
-## Running GAIA Tasks
-
-```bash
-# Run all GAIA Level 1 tasks
-clawbench run --label "my-setup" --task gaia_l1_001
-
-# Run all tasks (includes GAIA)
-clawbench run --label "full-bench"
-
-# List GAIA tasks
-clawbench list | grep gaia
-```
-
-## Adapting More GAIA Questions
-
-If you have access to the full GAIA dataset on HuggingFace:
-
-1. Request access at [huggingface.co/datasets/gaia-benchmark/GAIA](https://huggingface.co/datasets/gaia-benchmark/GAIA)
-2. Filter for Level 1 validation questions with no attached files (`file_name` is empty)
-3. Add them to `GAIATasks()` in `tasks.go` following the existing pattern
-4. Use the `gaia_exact` evaluator with the `Final answer` field as the ground truth
-
-See [adding-tasks.md](adding-tasks.md) for the general process of adding benchmark tasks.
+**Note:** ClawBench's official GAIA tasks use the Level 1 validation split filtered to text-only questions. Scores are not directly comparable to full leaderboard numbers but serve as a strong directional signal.
 
 ## References
 

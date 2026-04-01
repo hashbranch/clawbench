@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -386,25 +387,28 @@ func TestGaiaStrNormalize(t *testing.T) {
 	}
 }
 
-func TestGAIATasks_Count(t *testing.T) {
-	tasks := GAIATasks()
+func TestClawBenchOriginalTasks_Count(t *testing.T) {
+	tasks := ClawBenchOriginalTasks()
 	if len(tasks) != 15 {
-		t.Errorf("expected 15 GAIA tasks, got %d", len(tasks))
+		t.Errorf("expected 15 ClawBench original tasks, got %d", len(tasks))
 	}
-	// Verify all have gaia_l1 category
+	// Verify all have clawbench_original category and cb_ prefix
 	for _, task := range tasks {
-		if task.Category != "gaia_l1" {
-			t.Errorf("task %s has category %q, expected gaia_l1", task.ID, task.Category)
+		if task.Category != "clawbench_original" {
+			t.Errorf("task %s has category %q, expected clawbench_original", task.ID, task.Category)
+		}
+		if !strings.HasPrefix(task.ID, "cb_reasoning_") {
+			t.Errorf("task %s should have cb_reasoning_ prefix", task.ID)
 		}
 	}
 }
 
-func TestAllTasks_IncludesGAIA(t *testing.T) {
+func TestAllTasks_IncludesOriginals(t *testing.T) {
 	all := AllTasks()
 	builtin := BuiltinTasks()
-	gaia := GAIATasks()
-	if len(all) != len(builtin)+len(gaia) {
-		t.Errorf("AllTasks() returned %d tasks, expected %d+%d=%d", len(all), len(builtin), len(gaia), len(builtin)+len(gaia))
+	originals := ClawBenchOriginalTasks()
+	if len(all) != len(builtin)+len(originals) {
+		t.Errorf("AllTasks() returned %d tasks, expected %d+%d=%d", len(all), len(builtin), len(originals), len(builtin)+len(originals))
 	}
 }
 

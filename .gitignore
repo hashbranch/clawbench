@@ -1,3 +1,4 @@
 clawbench
 results/*.json
 .claude/
+gaia_questions_local.json

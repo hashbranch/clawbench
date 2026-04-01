@@ -65,6 +65,8 @@ clawbench compare results/setup-a.json results/setup-b.json
 | `--gateway` | `ws://127.0.0.1:18789` | Gateway WebSocket URL (websocket mode only) |
 | `--token` | `$OPENCLAW_AUTH_TOKEN` | Auth token (websocket mode only) |
 | `--label` | timestamp | Label for this run |
+| `--hf-token` | `$HF_TOKEN` | HuggingFace token for official GAIA questions |
+| `--gaia-only` | false | Run only official GAIA tasks (requires `--hf-token`) |
 | `--task` | all | Run specific task only |
 | `--repeat` | 1 | Repeat each task N times |
 | `--workspace` | | Path to OpenClaw workspace (for file checks) |
@@ -76,14 +78,23 @@ clawbench compare results/setup-a.json results/setup-b.json
 
 **Instruction Following** (`instruction_following`) — Tests structured output adherence: exactly 3 bullet points, each under 20 words. Exercises whether SOUL.md and AGENTS.md configuration affects format compliance. 60s budget.
 
-### GAIA Level 1 Tasks
+### ClawBench Original Tasks
 
-15 tasks inspired by the [GAIA benchmark](https://arxiv.org/abs/2311.12983) (General AI Assistants, Mialon et al. 2023). GAIA is the standard benchmark for evaluating AI assistants on real-world tasks — 466 questions requiring reasoning, web browsing, and tool use, where humans score 92% but top AI systems score ~75%.
+15 reasoning and knowledge tasks (`cb_reasoning_001` through `cb_reasoning_015`) authored by ClawBench. These follow the GAIA benchmark style (short factual answers, exact match) but are NOT from the official dataset. They serve as a baseline that runs without any external dependencies.
 
-ClawBench includes GAIA-style Level 1 questions (`gaia_l1_001` through `gaia_l1_015`) testing:
-- **Math & calculation**: Prime sums, unit conversion, tax calculation, base conversion
-- **Factual lookup**: Chemical elements, historical facts, geographic knowledge
-- **Reasoning**: Date calculation, Roman numerals, sequence patterns, string manipulation
+### Official GAIA Level 1 Tasks (Runtime Fetch)
+
+When you provide a HuggingFace token, ClawBench fetches real [GAIA benchmark](https://arxiv.org/abs/2311.12983) Level 1 validation questions at runtime. The GAIA dataset is gated — questions can't be redistributed, so they're downloaded fresh each run.
+
+```bash
+# Include official GAIA alongside built-in tasks
+clawbench run --hf-token "$HF_TOKEN" --label "full-bench"
+
+# Run ONLY official GAIA tasks
+clawbench run --hf-token "$HF_TOKEN" --gaia-only --label "gaia-bench"
+```
+
+Questions requiring file attachments or multimedia (images, video, audio) are automatically filtered out — only text-based questions are used.
 
 Each task uses the `gaia_exact` evaluator, which implements GAIA's official scoring: normalized exact string matching with whitespace/punctuation removal, numeric comparison, and list comparison. 120s budget per task.
 

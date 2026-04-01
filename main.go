@@ -53,6 +53,8 @@ Run flags:
   --token TOKEN     Auth token (websocket mode only, or set OPENCLAW_AUTH_TOKEN)
   --label NAME      Label for this benchmark run (default: timestamp)
   --benchmark NAME  Benchmark suite: "builtin" (default) or "exercism"
+  --hf-token TOKEN  HuggingFace token to fetch official GAIA questions (or set HF_TOKEN)
+  --gaia-only       Run only official GAIA tasks (requires --hf-token)
   --task ID         Run a specific task only (default: all)
   --repeat N        Repeat each task N times (default: 1)
   --workspace PATH  Path to OpenClaw workspace (for file_exists checks)
@@ -62,6 +64,7 @@ Examples:
   clawbench run --label "my-setup-v2"
   clawbench run --benchmark exercism --label "my-setup"
   clawbench run --benchmark exercism --task exercism/two-fer
+  clawbench run --hf-token "hf_xxx" --gaia-only  # official GAIA tasks only
   clawbench compare results/setup-a.json results/setup-b.json
 `, version)
 }
@@ -71,6 +74,8 @@ func cmdRun(args []string) {
 	mode := "cli" // default to CLI backend
 	debug := false
 	benchmark := "" // "", "builtin", "exercism"
+	hfToken := os.Getenv("HF_TOKEN")
+	gaiaOnly := false
 	gatewayURL := "ws://127.0.0.1:18789"
 	authToken := os.Getenv("OPENCLAW_AUTH_TOKEN")
 	label := time.Now().Format("20060102-150405")
@@ -128,6 +133,13 @@ func cmdRun(args []string) {
 			if i < len(args) {
 				benchmark = args[i]
 			}
+		case "--hf-token":
+			i++
+			if i < len(args) {
+				hfToken = args[i]
+			}
+		case "--gaia-only":
+			gaiaOnly = true
 		default:
 			fmt.Fprintf(os.Stderr, "unknown flag: %s\n", args[i])
 			os.Exit(1)
@@ -168,7 +180,33 @@ func cmdRun(args []string) {
 		}
 		fmt.Printf("Loaded %d Exercism Python exercises\n", len(tasks))
 	default:
-		tasks = AllTasks()
+		if gaiaOnly {
+			// --gaia-only: only run official GAIA tasks, skip built-ins
+			if hfToken == "" {
+				fmt.Fprintf(os.Stderr, "Error: --gaia-only requires --hf-token or HF_TOKEN env var\n")
+				os.Exit(1)
+			}
+		} else {
+			tasks = AllTasks()
+		}
+	}
+
+	// Fetch official GAIA questions if HF token is provided
+	if hfToken != "" {
+		fmt.Println("Fetching official GAIA Level 1 questions from HuggingFace...")
+		gaiaTasks, err := FetchGAIAQuestions(hfToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to fetch GAIA questions: %s\n", err)
+			if gaiaOnly {
+				os.Exit(1)
+			}
+			fmt.Println("Continuing with built-in tasks only.")
+		} else {
+			fmt.Printf("Loaded %d official GAIA Level 1 questions\n", len(gaiaTasks))
+			tasks = append(tasks, gaiaTasks...)
+		}
+	} else if !gaiaOnly {
+		fmt.Println("Tip: pass --hf-token to include official GAIA benchmark questions")
 	}
 
 	if taskID != "" {
