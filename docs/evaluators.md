@@ -21,9 +21,9 @@ Score:  1.0
 Checks if a specific tool/skill was used during the response.
 
 - **Config**: `ToolName string` — expected tool name
-- **Primary**: Checks structured tool call data from Gateway agent events (score: 1.0)
-- **Fallback**: If no tool data, checks response text for heuristic mentions like "used weather" (score: 0.5)
-- Case-insensitive matching
+- **Primary**: Checks structured tool call data from Gateway agent events. These arrive as `event: "agent"` frames with `stream: "tool"` and the tool name in `data.name`. Score: 1.0.
+- **Fallback**: If no structured tool data is available, checks response text for heuristic mentions like "used exec" or "called write". Score: 0.5 (lower confidence).
+- Case-insensitive matching.
 
 ## file_exists
 
@@ -37,8 +37,8 @@ Checks if the agent created an expected output file.
 
 Computes token cost from Gateway metadata.
 
-- **With token data**: Uses a price table keyed by model name (GPT-4o, Claude Sonnet, Haiku, Gemini, Ollama, etc.)
-- **Without token data**: Estimates from response character length at ~4 chars/token and $3/M tokens
+- **With token data**: Uses a price table keyed by model name (GPT-4o, Claude Sonnet, Claude Opus, Haiku, Gemini, Ollama, etc.)
+- **Without token data**: Estimates from response character length at ~4 chars/token and $3/M tokens. The Gateway doesn't always include token counts in its responses, so this fallback is common.
 - **Local models** (Ollama): Cost is $0
 
 The score field contains the raw USD cost (not normalized 0-1). This is intentional since cost is reported as a dollar amount, not a pass/fail.
@@ -55,8 +55,9 @@ Wall-clock time from prompt send to response complete.
 Built-in evaluator for the instruction_following task. Checks structured output format.
 
 - Checks: exactly 3 bullet points (0.5 if correct count)
-- Checks: each bullet under 20 words, excluding the prefix marker (0.5 if all pass)
-- Recognizes bullet markers: `- `, `* `, `1.`, `2.`, `3.`, `1)`, `2)`, `3)`
+- Checks: each bullet under 20 words, excluding the bullet prefix marker (0.5 if all pass)
+- Recognizes bullet markers: `-`, `*`, `•` (Unicode bullet), `1.`–`5.`, `1)`–`5)`
+- Empty lines between bullets are ignored (handles double-newline separated formats)
 
 ## Composite Scores
 

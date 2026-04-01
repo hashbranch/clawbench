@@ -7,16 +7,39 @@ ClawBench connects to your running OpenClaw Gateway, runs standardized benchmark
 ## Install
 
 ```bash
-go install github.com/tommerkle/clawbench@latest
+go install github.com/hashbranch/clawbench@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/tommerkle/clawbench.git
+git clone https://github.com/hashbranch/clawbench.git
 cd clawbench
 go build -o clawbench .
 ```
+
+## Quick Start
+
+ClawBench needs a running OpenClaw Gateway. It creates isolated sessions per task, so it won't interfere with your active agent conversations.
+
+**Using the CLI backend (default, recommended):**
+
+```bash
+# Requires openclaw CLI on PATH and Gateway running
+clawbench run --label "my-setup"
+```
+
+**Using the WebSocket backend (direct connection):**
+
+```bash
+clawbench run --mode websocket --token "$OPENCLAW_AUTH_TOKEN" --label "my-setup"
+```
+
+### Device Identity
+
+ClawBench auto-detects your device identity from `~/.openclaw/identity/device.json` for scope binding when using WebSocket mode. This is the same Ed25519 key pair used by the OpenClaw CLI. Without it, the Gateway may reject scope requests or limit access.
+
+The CLI backend bypasses this since the `openclaw` CLI handles its own auth.
 
 ## Usage
 
@@ -38,8 +61,9 @@ clawbench compare results/setup-a.json results/setup-b.json
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--gateway` | `ws://127.0.0.1:18789` | Gateway WebSocket URL |
-| `--token` | `$OPENCLAW_AUTH_TOKEN` | Auth token |
+| `--mode` | `cli` | Backend mode: `cli` (openclaw CLI) or `websocket` (direct WS) |
+| `--gateway` | `ws://127.0.0.1:18789` | Gateway WebSocket URL (websocket mode only) |
+| `--token` | `$OPENCLAW_AUTH_TOKEN` | Auth token (websocket mode only) |
 | `--label` | timestamp | Label for this run |
 | `--task` | all | Run specific task only |
 | `--repeat` | 1 | Repeat each task N times |
@@ -48,9 +72,9 @@ clawbench compare results/setup-a.json results/setup-b.json
 
 ## Benchmark Tasks
 
-**Skill Discovery + Tool Chaining** — Tests whether your setup can find and chain the right skills (weather lookup + file write). Exercises skill discovery, tool chaining, and output generation.
+**Skill Discovery + Tool Chaining** (`skill_tool_chain`) — Prompts the agent to look up weather and write a haiku to a file. Exercises tool discovery (`exec` for weather fetching), tool chaining (`write` for file creation), and output generation (`file_exists` check). 90s budget.
 
-**Instruction Following** — Tests whether your SOUL.md and AGENTS.md configuration affects how well the agent follows structured instructions (exact bullet count, word limits).
+**Instruction Following** (`instruction_following`) — Tests structured output adherence: exactly 3 bullet points, each under 20 words. Exercises whether SOUL.md and AGENTS.md configuration affects format compliance. 60s budget.
 
 ## Metrics
 
@@ -59,7 +83,7 @@ Each task is scored on independent metrics (not composited into a single score):
 - **Correctness** — Did the agent produce the right answer?
 - **Tool Accuracy** — Did it use the right tools/skills?
 - **Latency** — How fast from prompt to response?
-- **Cost** — Token cost (real if available, estimated otherwise)
+- **Cost** — Token cost (real if available, estimated from response char length otherwise)
 
 ## How Comparison Works
 
@@ -68,7 +92,15 @@ Each task is scored on independent metrics (not composited into a single score):
 3. Share the JSON result files
 4. `clawbench compare` shows a side-by-side table with deltas
 
-Results capture config metadata (model, temperature, Gateway version) so you know what you're comparing.
+Results capture config metadata (model, Gateway version, gateway URL) so you know what you're comparing.
+
+## Session Isolation
+
+Each benchmark task runs in its own isolated session via `sessions.create`. This means:
+
+- Benchmark runs don't pollute your active agent conversations
+- Each task gets a clean context (no bleed between tasks)
+- Sessions are labeled `ClawBench - <seq> - <timestamp>` for easy identification
 
 ## License
 
