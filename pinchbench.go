@@ -79,6 +79,31 @@ Create all three files with appropriate content.`,
 			Tags:     []string{"pinchbench", "file_ops", "editing"},
 			Prompt: `I have a configuration file called config.yaml in my workspace. Find all occurrences of "localhost" and replace them with "production.example.com". Also find all occurrences of port "3000" and replace with "8080". Show me what you changed.`,
 			TimeBudget: 90 * time.Second,
+			SetupFiles: []SetupFile{
+				{Path: "config.yaml", Content: `# Application Configuration
+server:
+  host: localhost
+  port: 3000
+  workers: 4
+
+database:
+  host: localhost
+  port: 5432
+  name: myapp_dev
+
+redis:
+  host: localhost
+  port: 6379
+
+api:
+  base_url: http://localhost:3000/api/v1
+  timeout: 30
+
+logging:
+  level: debug
+  output: stdout
+`},
+			},
 			Evaluators: []EvalConfig{
 				{Type: "exact_match", Patterns: []string{`(?i)production\.example\.com|8080|replaced|changed`}, Weight: 1.0},
 				{Type: "tool_invoked", ToolName: "exec", Weight: 0.5},
@@ -101,6 +126,20 @@ Create all three files with appropriate content.`,
 
 Create all files with working, production-quality code.`,
 			TimeBudget: 180 * time.Second,
+			SetupFiles: []SetupFile{
+				{Path: "config.json", Content: `{
+  "api": {
+    "base_url": "https://jsonplaceholder.typicode.com",
+    "endpoints": {
+      "posts": "/posts",
+      "users": "/users"
+    },
+    "timeout": 30,
+    "retries": 3
+  }
+}
+`},
+			},
 			Evaluators: []EvalConfig{
 				{Type: "file_exists", Path: "api_client.py", Weight: 1.0},
 				{Type: "file_exists", Path: "API_DOCS.md", Weight: 1.0},
@@ -120,8 +159,29 @@ Create all files with working, production-quality code.`,
 			Tags:     []string{"pinchbench", "memory", "comprehension", "file_ops"},
 			Prompt: `Read the file notes.md in your workspace. It contains meeting notes from last week. Find the date of the next quarterly review meeting and save just the date to a file called answer.txt.`,
 			TimeBudget: 90 * time.Second,
+			SetupFiles: []SetupFile{
+				{Path: "notes.md", Content: `# Meeting Notes - Week of March 24, 2026
+
+## Monday Standup
+- Sprint velocity looking good at 42 points
+- Deploy scheduled for Wednesday
+- Sarah mentioned the design review is pushed to next sprint
+
+## Wednesday All-Hands
+- Q1 revenue targets exceeded by 12%
+- New hire starting April 7th (backend engineer)
+- The next quarterly review meeting is scheduled for April 15, 2026
+- Office renovation starts May 1st
+
+## Friday Retro
+- Improved CI pipeline reduced build times by 40%
+- Need to address flaky integration tests
+- Team lunch planned for next Tuesday
+`},
+			},
 			Evaluators: []EvalConfig{
 				{Type: "file_exists", Path: "answer.txt", Weight: 1.0},
+				{Type: "gaia_exact", Patterns: []string{"April 15, 2026"}, Weight: 1.0},
 				{Type: "tool_invoked", ToolName: "exec", Weight: 0.3},
 				{Type: "tool_invoked", ToolName: "write", Weight: 0.5},
 				{Type: "cost", Weight: 0.3},
@@ -142,6 +202,80 @@ Create all files with working, production-quality code.`,
 
 Save your triage report to triage_report.md with a clear, structured format.`,
 			TimeBudget: 180 * time.Second,
+			SetupFiles: []SetupFile{
+				{Path: "inbox.md", Content: `# Inbox
+
+## Email 1: Production Database Alert
+From: monitoring@ops.internal
+Subject: CRITICAL: Database CPU at 95%
+Time: 9:02 AM
+
+Production database server db-primary-01 has sustained CPU usage above 95% for the past 15 minutes. Active connections: 847 (normal: ~200). Slow query log shows multiple full table scans on the orders table.
+
+## Email 2: Team Lunch Tomorrow
+From: sarah@company.com
+Subject: Lunch at Nopa tomorrow?
+Time: 9:15 AM
+
+Hey team! Want to do lunch at Nopa tomorrow around 12:30? They have great vegetarian options. Let me know if you can make it!
+
+## Email 3: Client Contract Renewal
+From: legal@company.com
+Subject: Acme Corp contract expires Friday
+Time: 9:30 AM
+
+The Acme Corp enterprise contract (ARR $480K) expires this Friday. They've indicated interest in renewing but want to discuss pricing. Sales needs legal review of the amended terms by Thursday EOD.
+
+## Email 4: Sprint Planning Reminder
+From: jira@atlassian.com
+Subject: Sprint 24 planning starts in 1 hour
+Time: 10:00 AM
+
+Sprint 24 planning ceremony begins at 11:00 AM in the Willow conference room. Please have your backlog items estimated before the meeting.
+
+## Email 5: Security Vulnerability Report
+From: security@company.com
+Subject: CVE-2026-1234 affects our auth library
+Time: 10:15 AM
+
+A critical CVE has been published for auth-jwt v3.2.1 which we use in production. The vulnerability allows token forgery. A patched version (v3.2.2) is available. Please prioritize upgrading.
+
+## Email 6: Weekly Metrics Dashboard
+From: analytics@company.com
+Subject: Weekly KPI Report - Week 13
+Time: 10:30 AM
+
+Weekly metrics are ready. Key highlights: DAU up 8% WoW, conversion rate steady at 3.2%, churn decreased to 1.1%. Full dashboard: https://analytics.internal/weekly
+
+## Email 7: PTO Request Approval
+From: hr@company.com
+Subject: PTO request from Mike Chen needs your approval
+Time: 11:00 AM
+
+Mike Chen has requested PTO for April 21-25 (5 days). His current balance is 12 days. Please approve or deny in the HR portal by end of week.
+
+## Email 8: Investor Update Draft
+From: ceo@company.com
+Subject: Review investor update before send
+Time: 11:30 AM
+
+Please review the attached Q1 investor update before I send it out tomorrow. Particularly need eyes on the revenue projections section and the new product roadmap slide. Comments by 5 PM today.
+
+## Email 9: New Feature Request
+From: product@company.com
+Subject: Feature request: Bulk export to CSV
+Time: 12:00 PM
+
+Multiple enterprise customers have requested bulk data export to CSV. Currently they can only export 100 rows at a time. Proposing we add this to the Sprint 25 backlog. Product spec draft attached.
+
+## Email 10: Office WiFi Issues
+From: it@company.com
+Subject: Known issue: 5GHz WiFi intermittent on Floor 3
+Time: 12:30 PM
+
+We're aware of connectivity issues on the 5GHz band on Floor 3. A replacement access point has been ordered and should arrive Thursday. In the meantime, please use the 2.4GHz network (CompanyNet-Legacy).
+`},
+			},
 			Evaluators: []EvalConfig{
 				{Type: "file_exists", Path: "triage_report.md", Weight: 1.0},
 				{Type: "exact_match", Patterns: []string{
@@ -166,7 +300,7 @@ Save your triage report to triage_report.md with a clear, structured format.`,
 2. Include an introduction, 3 main sections, and a conclusion
 3. Be professional but engaging in tone
 4. Include at least one statistic or data point (research if needed)`,
-			TimeBudget: 120 * time.Second,
+			TimeBudget: 240 * time.Second,
 			Evaluators: []EvalConfig{
 				{Type: "file_exists", Path: "blog_post.md", Weight: 1.0},
 				{Type: "exact_match", Patterns: []string{`(?i)remote work|work from home|hybrid`}, Weight: 0.5},

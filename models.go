@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+// SetupFile defines a file to create in the workspace before running a task.
+type SetupFile struct {
+	Path    string // relative path in workspace
+	Content string // file content
+}
+
 // Task defines a benchmark task with its prompt and evaluation criteria.
 type Task struct {
 	ID          string
@@ -14,6 +20,7 @@ type Task struct {
 	Prompt      string
 	TimeBudget  time.Duration
 	Evaluators  []EvalConfig
+	SetupFiles  []SetupFile // files to seed in workspace before running
 }
 
 // EvalConfig is a flat struct for all evaluator types.

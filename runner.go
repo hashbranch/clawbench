@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"sort"
 	"time"
 )
@@ -17,6 +19,23 @@ func RunTask(ctx context.Context, client Backend, task Task, workspacePath strin
 	// Create a timeout context for this task
 	taskCtx, cancel := context.WithTimeout(ctx, task.TimeBudget)
 	defer cancel()
+
+	// Seed setup files into workspace before running
+	if len(task.SetupFiles) > 0 && workspacePath != "" {
+		for _, sf := range task.SetupFiles {
+			fullPath := filepath.Join(workspacePath, sf.Path)
+			os.MkdirAll(filepath.Dir(fullPath), 0755)
+			if err := os.WriteFile(fullPath, []byte(sf.Content), 0644); err != nil {
+				return RunResult{
+					RunID:    runID,
+					TaskID:   task.ID,
+					Timestamp: time.Now(),
+					IsError:  true,
+					ErrorMsg: fmt.Sprintf("failed to seed file %s: %v", sf.Path, err),
+				}
+			}
+		}
+	}
 
 	// Send prompt and capture response
 	resp, err := client.SendPrompt(taskCtx, task.Prompt)
