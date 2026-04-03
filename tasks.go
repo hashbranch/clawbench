@@ -256,19 +256,19 @@ func RegressionTasks() []Task {
 			Name:     "Regression: Email Draft Composition",
 			Category: "regression",
 			Tags:     []string{"regression", "email", "draft", "professional"},
-			Prompt: `I need to reply to an email thread with Drey Campbell (dreyc@leeidaho.com). His EA Nicole (dcassistant@leeidaho.com) proposed a meeting time. CC Ken Zink (ken.zink@hashbranch.com). Confirm the meeting and ask Drey to fill out a form at https://example.com/form. Create a draft, don't send it.`,
+			Prompt: `I need to reply to an email thread with James Rivera (james@riverarealty.com). His assistant Sarah (sarah@riverarealty.com) proposed a meeting time. CC Alex Chen (alex@acmeconsulting.com). Confirm the meeting and ask James to fill out a form at https://example.com/intake. Create a draft, don't send it.`,
 			TimeBudget: 90 * time.Second,
 			Evaluators: []EvalConfig{
 				// Must mention creating a draft (not sending)
 				{Type: "exact_match", Patterns: []string{`(?i)\bdraft\b`}, Weight: 1.0},
 				// Must include all three recipients
 				{Type: "exact_match", Patterns: []string{
-					`(?i)dreyc@leeidaho\.com`,
-					`(?i)dcassistant@leeidaho\.com`,
-					`(?i)ken\.zink@hashbranch\.com`,
+					`(?i)james@riverarealty\.com`,
+					`(?i)sarah@riverarealty\.com`,
+					`(?i)alex@acmeconsulting\.com`,
 				}, Weight: 1.5},
 				// Must include the form link
-				{Type: "exact_match", Patterns: []string{`https://example\.com/form`}, Weight: 1.0},
+				{Type: "exact_match", Patterns: []string{`https://example\.com/intake`}, Weight: 1.0},
 				// Must NOT contain em dashes (AI giveaway)
 				{Type: "regex_reject", Patterns: []string{`\x{2014}`, `\x{2013}`}, Weight: 1.0},
 				// Must NOT say "sent" or "sending" (should be draft only)
@@ -284,14 +284,14 @@ func RegressionTasks() []Task {
 			Tags:     []string{"regression", "email", "triage", "classification"},
 			Prompt: `Classify these emails as 'action' (needs response), 'todo' (important, not urgent), or 'noise' (archive). Reply with ONLY the classification for each, numbered.
 
-1. From: noreply@pipedrive.com — Subject: 'New activity assigned to you'
-2. From: adam@rains.law — Subject: 'Re: BitCap hosting agreement review'
-3. From: hello@sundaybk.com — Subject: '4/5 Free Sake Tasting Party!'
-4. From: deepak@hashbranch.com — Subject: 'Quick question about the fund deck'
+1. From: noreply@crmsystem.com — Subject: 'New activity assigned to you'
+2. From: counsel@lawfirm.com — Subject: 'Re: Vendor agreement review'
+3. From: hello@localbar.com — Subject: '4/5 Free Wine Tasting Party!'
+4. From: cofounder@yourcompany.com — Subject: 'Quick question about the investor deck'
 5. From: notifications@github.com — Subject: 'PR #47 merged'
-6. From: tom@bitcap.com — Subject: 'Hosting contract ready for signature'
+6. From: partner@clientcorp.com — Subject: 'Contract ready for signature'
 7. From: newsletter@beehiiv.com — Subject: 'Hire Slow, Fire Fast'
-8. From: nicole@leeidaho.com — Subject: 'Re: Meeting reschedule'`,
+8. From: assistant@prospectco.com — Subject: 'Re: Meeting reschedule'`,
 			TimeBudget: 60 * time.Second,
 			Evaluators: []EvalConfig{
 				// Pipe response to validation script (checks 7/8 correct minimum)
@@ -305,7 +305,7 @@ func RegressionTasks() []Task {
 			Name:     "Regression: Professional Tone Compliance",
 			Category: "regression",
 			Tags:     []string{"regression", "email", "tone", "professional"},
-			Prompt: `Write a short email to a potential consulting client named Drey who is a commercial real estate broker. We met at a networking event. Follow up to schedule an initial call about how AI automation could help his brokerage workflows. Keep it under 100 words.`,
+			Prompt: `Write a short email to a potential consulting client named James who is a commercial real estate broker. We met at a networking event. Follow up to schedule an initial call about how AI automation could help his brokerage workflows. Keep it under 100 words.`,
 			TimeBudget: 60 * time.Second,
 			Evaluators: []EvalConfig{
 				// Pipe response to comprehensive tone validation script

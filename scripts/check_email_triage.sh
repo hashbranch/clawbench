@@ -7,6 +7,9 @@ set -euo pipefail
 RESPONSE=$(cat)
 
 # Expected classifications (lowercase)
+# 1=CRM notification(noise) 2=attorney(action) 3=restaurant promo(noise)
+# 4=cofounder(action) 5=GitHub bot(noise) 6=client contract(action)
+# 7=newsletter(noise) 8=prospect assistant(action)
 declare -A EXPECTED=(
   [1]="noise"
   [2]="action"
