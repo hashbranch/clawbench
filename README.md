@@ -33,6 +33,9 @@ clawbench run --benchmark pinchbench --mode websocket --token "your-token" --lab
 # Run Exercism coding benchmark (34 Python exercises)
 clawbench run --benchmark exercism --mode websocket --token "your-token" --label "my-setup"
 
+# Run regression tests (catches agent communication failures)
+clawbench run --task reg_email_draft_composition --mode websocket --token "your-token"
+
 # Run a specific task
 clawbench run --benchmark pinchbench --task pinch/weather_script
 
@@ -87,6 +90,16 @@ PinchBench originally benchmarks models (holding config constant). ClawBench ada
 15 reasoning and knowledge tasks following the [GAIA benchmark](https://arxiv.org/abs/2311.12983) philosophy: short unambiguous answers, real-world knowledge, multi-step reasoning. Scored with the `gaia_exact` evaluator implementing official GAIA scoring (normalized exact string matching, numeric comparison, list comparison). Included in the default task set.
 
 Optional: provide a HuggingFace token to also fetch real GAIA Level 1 questions from the gated dataset. See [docs/gaia.md](docs/gaia.md) for published baselines (Claude Sonnet 4.5 achieves 82% on Level 1).
+
+### Regression (3 tasks)
+
+Tests encoding real agent failures in professional communication. Every time an agent makes a mistake in production (wrong recipients, sent instead of drafted, unprofessional tone), it becomes a regression test here. Run these after config or prompt changes to catch regressions before they hit a client inbox.
+
+- **Email Draft Composition** -- Agent must create a draft (not send), include all specified recipients, include a form link, and avoid em dashes
+- **Email Triage Classification** -- Classify 8 emails as action/todo/noise with 7/8 minimum accuracy
+- **Professional Tone Compliance** -- Write a client email free of AI tells (em dashes, sycophantic openers, buzzwords, filler phrases)
+
+Uses two new evaluator types: `regex_reject` (must NOT contain patterns) and `response_check` (pipe response to validation script).
 
 ### Exercism (34 tasks)
 
