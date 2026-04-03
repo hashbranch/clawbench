@@ -245,12 +245,98 @@ func ClawBenchOriginalTasks() []Task {
 	}
 }
 
+// RegressionTasks returns tasks that encode real agent mistakes.
+// These are based on actual failures observed in production use,
+// designed to prevent regressions in professional communication,
+// email handling, and classification accuracy.
+func RegressionTasks() []Task {
+	return []Task{
+		{
+			ID:       "reg_email_draft_composition",
+			Name:     "Regression: Email Draft Composition",
+			Category: "regression",
+			Tags:     []string{"regression", "email", "draft", "professional"},
+			Prompt: `I need to reply to an email thread with Drey Campbell (dreyc@leeidaho.com). His EA Nicole (dcassistant@leeidaho.com) proposed a meeting time. CC Ken Zink (ken.zink@hashbranch.com). Confirm the meeting and ask Drey to fill out a form at https://example.com/form. Create a draft, don't send it.`,
+			TimeBudget: 90 * time.Second,
+			Evaluators: []EvalConfig{
+				// Must mention creating a draft (not sending)
+				{Type: "exact_match", Patterns: []string{`(?i)\bdraft\b`}, Weight: 1.0},
+				// Must include all three recipients
+				{Type: "exact_match", Patterns: []string{
+					`(?i)dreyc@leeidaho\.com`,
+					`(?i)dcassistant@leeidaho\.com`,
+					`(?i)ken\.zink@hashbranch\.com`,
+				}, Weight: 1.5},
+				// Must include the form link
+				{Type: "exact_match", Patterns: []string{`https://example\.com/form`}, Weight: 1.0},
+				// Must NOT contain em dashes (AI giveaway)
+				{Type: "regex_reject", Patterns: []string{`\x{2014}`, `\x{2013}`}, Weight: 1.0},
+				// Must NOT say "sent" or "sending" (should be draft only)
+				{Type: "regex_reject", Patterns: []string{`(?i)\b(sent the email|email has been sent|sending the email|I('ve| have) sent)\b`}, Weight: 1.0},
+				{Type: "cost", Weight: 0.3},
+				{Type: "latency", Weight: 0.3},
+			},
+		},
+		{
+			ID:       "reg_email_triage_classification",
+			Name:     "Regression: Email Triage Classification",
+			Category: "regression",
+			Tags:     []string{"regression", "email", "triage", "classification"},
+			Prompt: `Classify these emails as 'action' (needs response), 'todo' (important, not urgent), or 'noise' (archive). Reply with ONLY the classification for each, numbered.
+
+1. From: noreply@pipedrive.com — Subject: 'New activity assigned to you'
+2. From: adam@rains.law — Subject: 'Re: BitCap hosting agreement review'
+3. From: hello@sundaybk.com — Subject: '4/5 Free Sake Tasting Party!'
+4. From: deepak@hashbranch.com — Subject: 'Quick question about the fund deck'
+5. From: notifications@github.com — Subject: 'PR #47 merged'
+6. From: tom@bitcap.com — Subject: 'Hosting contract ready for signature'
+7. From: newsletter@beehiiv.com — Subject: 'Hire Slow, Fire Fast'
+8. From: nicole@leeidaho.com — Subject: 'Re: Meeting reschedule'`,
+			TimeBudget: 60 * time.Second,
+			Evaluators: []EvalConfig{
+				// Pipe response to validation script (checks 7/8 correct minimum)
+				{Type: "response_check", Path: "scripts/check_email_triage.sh", Weight: 2.0},
+				{Type: "cost", Weight: 0.3},
+				{Type: "latency", Weight: 0.3},
+			},
+		},
+		{
+			ID:       "reg_professional_tone_compliance",
+			Name:     "Regression: Professional Tone Compliance",
+			Category: "regression",
+			Tags:     []string{"regression", "email", "tone", "professional"},
+			Prompt: `Write a short email to a potential consulting client named Drey who is a commercial real estate broker. We met at a networking event. Follow up to schedule an initial call about how AI automation could help his brokerage workflows. Keep it under 100 words.`,
+			TimeBudget: 60 * time.Second,
+			Evaluators: []EvalConfig{
+				// Pipe response to comprehensive tone validation script
+				{Type: "response_check", Path: "scripts/check_professional_tone.sh", Weight: 2.0},
+				// Must NOT contain em dashes
+				{Type: "regex_reject", Patterns: []string{`\x{2014}`, `\x{2013}`}, Weight: 1.0},
+				// Must NOT contain sycophantic openers
+				{Type: "regex_reject", Patterns: []string{
+					`(?i)I'd be happy to`,
+					`(?i)^Great to`,
+					`(?i)^Absolutely`,
+					`(?i)I hope this email finds you well`,
+				}, Weight: 1.0},
+				// Must NOT contain buzzwords
+				{Type: "regex_reject", Patterns: []string{`(?i)\b(leverage|synergy|synergies)\b`}, Weight: 0.5},
+				// Must contain scheduling language
+				{Type: "exact_match", Patterns: []string{`(?i)(schedule|call|meeting|chat|connect|book|set up)`}, Weight: 1.0},
+				{Type: "cost", Weight: 0.3},
+				{Type: "latency", Weight: 0.3},
+			},
+		},
+	}
+}
+
 // AllTasks returns all built-in benchmark tasks (builtin + ClawBench originals).
 // GAIA official tasks are NOT included here — they're loaded at runtime
 // via FetchGAIAQuestions when --hf-token is provided.
 func AllTasks() []Task {
 	tasks := BuiltinTasks()
 	tasks = append(tasks, ClawBenchOriginalTasks()...)
+	tasks = append(tasks, RegressionTasks()...)
 	return tasks
 }
 

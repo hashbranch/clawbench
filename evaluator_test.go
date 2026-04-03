@@ -257,6 +257,72 @@ func TestFormatBullets_NumberedList(t *testing.T) {
 	}
 }
 
+// --- regex_reject evaluator tests ---
+
+func TestRegexReject_NoViolations(t *testing.T) {
+	ec := EvalConfig{Type: "regex_reject", Patterns: []string{`badword`, `terrible`}, Weight: 1.0}
+	result := evalRegexReject(ec, "this is a clean response")
+	if result.Score != 1.0 {
+		t.Errorf("expected score 1.0, got %f", result.Score)
+	}
+	if !result.Passed {
+		t.Error("expected passed=true")
+	}
+}
+
+func TestRegexReject_OneViolation(t *testing.T) {
+	ec := EvalConfig{Type: "regex_reject", Patterns: []string{`badword`, `clean`}, Weight: 1.0}
+	result := evalRegexReject(ec, "this is a clean response")
+	if result.Score != 0.5 {
+		t.Errorf("expected score 0.5, got %f", result.Score)
+	}
+	if result.Passed {
+		t.Error("expected passed=false")
+	}
+}
+
+func TestRegexReject_AllViolations(t *testing.T) {
+	ec := EvalConfig{Type: "regex_reject", Patterns: []string{`this`, `response`}, Weight: 1.0}
+	result := evalRegexReject(ec, "this is a response")
+	if result.Score != 0.0 {
+		t.Errorf("expected score 0.0, got %f", result.Score)
+	}
+}
+
+func TestRegexReject_EmptyPatterns(t *testing.T) {
+	ec := EvalConfig{Type: "regex_reject", Patterns: nil, Weight: 1.0}
+	result := evalRegexReject(ec, "anything")
+	if result.Score != 1.0 {
+		t.Errorf("expected score 1.0 with no patterns, got %f", result.Score)
+	}
+}
+
+// --- response_check evaluator tests ---
+
+func TestResponseCheck_PassingScript(t *testing.T) {
+	ec := EvalConfig{Type: "response_check", Path: "grep -q hello", Weight: 1.0}
+	result := evalResponseCheck(ec, "hello world", t.TempDir())
+	if result.Score != 1.0 {
+		t.Errorf("expected score 1.0, got %f (%s)", result.Score, result.Details)
+	}
+}
+
+func TestResponseCheck_FailingScript(t *testing.T) {
+	ec := EvalConfig{Type: "response_check", Path: "grep -q missing", Weight: 1.0}
+	result := evalResponseCheck(ec, "hello world", t.TempDir())
+	if result.Score != 0.0 {
+		t.Errorf("expected score 0.0, got %f", result.Score)
+	}
+}
+
+func TestResponseCheck_NoCommand(t *testing.T) {
+	ec := EvalConfig{Type: "response_check", Path: "", Weight: 1.0}
+	result := evalResponseCheck(ec, "hello", t.TempDir())
+	if result.Score != 0.0 {
+		t.Errorf("expected score 0.0 with no command, got %f", result.Score)
+	}
+}
+
 // --- GAIA Exact evaluator tests ---
 
 func TestGAIAExact_StringMatch(t *testing.T) {
@@ -407,8 +473,25 @@ func TestAllTasks_IncludesOriginals(t *testing.T) {
 	all := AllTasks()
 	builtin := BuiltinTasks()
 	originals := ClawBenchOriginalTasks()
-	if len(all) != len(builtin)+len(originals) {
-		t.Errorf("AllTasks() returned %d tasks, expected %d+%d=%d", len(all), len(builtin), len(originals), len(builtin)+len(originals))
+	regression := RegressionTasks()
+	expected := len(builtin) + len(originals) + len(regression)
+	if len(all) != expected {
+		t.Errorf("AllTasks() returned %d tasks, expected %d+%d+%d=%d", len(all), len(builtin), len(originals), len(regression), expected)
+	}
+}
+
+func TestRegressionTasks_Count(t *testing.T) {
+	tasks := RegressionTasks()
+	if len(tasks) != 3 {
+		t.Errorf("expected 3 regression tasks, got %d", len(tasks))
+	}
+	for _, task := range tasks {
+		if task.Category != "regression" {
+			t.Errorf("task %s has category %q, expected regression", task.ID, task.Category)
+		}
+		if !strings.HasPrefix(task.ID, "reg_") {
+			t.Errorf("task %s should have reg_ prefix", task.ID)
+		}
 	}
 }
 
