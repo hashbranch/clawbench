@@ -37,6 +37,10 @@ func runEvaluator(ec EvalConfig, resp GatewayResponse, wallClock float64, worksp
 		return evalFormatBullets(ec, resp.Text)
 	case "exec_check":
 		return evalExecCheck(ec, workspacePath)
+	case "regex_reject":
+		return evalRegexReject(ec, resp.Text)
+	case "response_check":
+		return evalResponseCheck(ec, resp.Text, workspacePath)
 	default:
 		return EvalResult{
 			Type:    ec.Type,
@@ -500,9 +504,93 @@ func evalExecCheck(ec EvalConfig, workspacePath string) EvalResult {
 	}
 }
 
+// evalRegexReject checks that NONE of the regex patterns match the response text.
+// Inverse of exact_match — used for "must NOT contain" checks (e.g., em dashes, sycophantic openers).
+// Score is 1.0 if no patterns match, 0.0 if any pattern matches. Partial scoring by ratio of non-matches.
+func evalRegexReject(ec EvalConfig, text string) EvalResult {
+	if len(ec.Patterns) == 0 {
+		return EvalResult{Type: "regex_reject", Score: 1.0, Weight: ec.Weight, Passed: true, Details: "no reject patterns specified"}
+	}
+
+	rejected := 0
+	var violations []string
+	for _, pattern := range ec.Patterns {
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			violations = append(violations, fmt.Sprintf("invalid regex %q: %v", pattern, err))
+			continue
+		}
+		if re.MatchString(text) {
+			rejected++
+			violations = append(violations, fmt.Sprintf("matched reject pattern %q", pattern))
+		}
+	}
+
+	passed := rejected == 0
+	score := float64(len(ec.Patterns)-rejected) / float64(len(ec.Patterns))
+	details := fmt.Sprintf("%d/%d reject patterns matched", rejected, len(ec.Patterns))
+	if len(violations) > 0 {
+		details += "; " + strings.Join(violations, "; ")
+	}
+
+	return EvalResult{
+		Type:    "regex_reject",
+		Score:   score,
+		Weight:  ec.Weight,
+		Passed:  passed,
+		Details: details,
+	}
+}
+
+// evalResponseCheck runs a shell command with the response text piped to stdin.
+// Exit 0 = pass, non-zero = fail. Unlike exec_check (which only gets workspace path),
+// this evaluator passes the actual response text for content validation.
+// ec.Path contains the command to run (e.g., a validation script path).
+func evalResponseCheck(ec EvalConfig, text string, workspacePath string) EvalResult {
+	if ec.Path == "" {
+		return EvalResult{
+			Type:    "response_check",
+			Score:   0,
+			Weight:  ec.Weight,
+			Passed:  false,
+			Details: "no command specified in Path",
+		}
+	}
+
+	cmd := exec.Command("bash", "-c", ec.Path)
+	if workspacePath != "" {
+		cmd.Dir = workspacePath
+	}
+	cmd.Stdin = strings.NewReader(text)
+	output, err := cmd.CombinedOutput()
+
+	if err == nil {
+		return EvalResult{
+			Type:    "response_check",
+			Score:   1.0,
+			Weight:  ec.Weight,
+			Passed:  true,
+			Details: fmt.Sprintf("response check passed: %s", ec.Path),
+		}
+	}
+
+	outStr := string(output)
+	if len(outStr) > 500 {
+		outStr = outStr[:500] + "..."
+	}
+
+	return EvalResult{
+		Type:    "response_check",
+		Score:   0,
+		Weight:  ec.Weight,
+		Passed:  false,
+		Details: fmt.Sprintf("response check failed: %s\n%s", ec.Path, outStr),
+	}
+}
+
 // ComputeCorrectness aggregates correctness-related evaluator scores.
 func ComputeCorrectness(results []EvalResult) float64 {
-	return weightedAverage(results, "exact_match", "format_bullets", "exec_check", "gaia_exact")
+	return weightedAverage(results, "exact_match", "format_bullets", "exec_check", "gaia_exact", "regex_reject", "response_check")
 }
 
 // ComputeToolAccuracy aggregates tool-related evaluator scores.

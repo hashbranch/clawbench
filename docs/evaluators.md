@@ -1,6 +1,6 @@
 # Evaluators
 
-ClawBench has 7 built-in evaluators. Each produces a score (0.0-1.0) and a human-readable details string.
+ClawBench has 9 built-in evaluators. Each produces a score (0.0-1.0) and a human-readable details string.
 
 ## exact_match
 
@@ -88,11 +88,56 @@ Built-in evaluator for the instruction_following task. Checks structured output 
 - Recognizes bullet markers: `-`, `*`, `•` (Unicode bullet), `1.`–`5.`, `1)`–`5)` (numbered lists above 5 are not currently matched)
 - Empty lines between bullets are ignored (handles double-newline separated formats)
 
+## regex_reject
+
+Inverse of `exact_match`. Passes when **none** of the patterns match. Used for "must NOT contain" checks like em dashes, sycophantic openers, or buzzwords.
+
+- **Config**: `Patterns []string` — list of regex patterns that should NOT appear
+- **Scoring**: `(total - matched) / total` — every match reduces the score
+- **Edge cases**: Invalid regex scores 0 with a warning. Empty response scores 1.0 (nothing to reject).
+
+```
+Input:   "Here's the draft email for review."
+Pattern: `\x{2014}`  (em dash)
+Score:   1.0  (no em dashes found — pass)
+```
+
+```
+Input:   "I'd be happy to help — let me draft that."
+Patterns: [`(?i)I'd be happy to`, `\x{2014}`]
+Score:   0.0  (both patterns matched)
+```
+
+Part of the **Correctness** composite score.
+
+## response_check
+
+Like `exec_check` but pipes the agent's response text to the script via stdin. Designed for content validation that's too complex for regex (word counts, multi-field parsing, threshold checks).
+
+- **Config**: `Path string` — path to a shell script (relative to clawbench binary)
+- **Execution**: Runs `bash <script>` with the full response text piped to stdin
+- **Scoring**: Exit 0 = 1.0 (pass), non-zero = 0.0 (fail)
+- **Diagnostics**: Script stderr is captured in the evaluator details string
+
+```bash
+# Example: scripts/check_professional_tone.sh
+#!/usr/bin/env bash
+RESPONSE=$(cat)
+word_count=$(echo "$RESPONSE" | wc -w | tr -d ' ')
+if [ "$word_count" -gt 150 ]; then
+  echo "FAIL: Too many words ($word_count)" >&2
+  exit 1
+fi
+exit 0
+```
+
+Part of the **Correctness** composite score.
+
 ## Composite Scores
 
 Individual evaluator results are aggregated into two composite dimensions:
 
-- **Correctness** = weighted average of `exact_match` + `format_bullets` + `gaia_exact` evaluators
+- **Correctness** = weighted average of `exact_match` + `format_bullets` + `gaia_exact` + `regex_reject` + `response_check` evaluators
 - **Tool Accuracy** = weighted average of `tool_invoked` + `file_exists` evaluators
 
 Weights are relative within each dimension. An evaluator with weight 1.0 counts 2x one with weight 0.5.
